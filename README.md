@@ -6,7 +6,7 @@ Turns a one-line prompt into a merged PR using any combination of models, sandbo
 
 ## Why?
 
-Existing multi-agent tools (Overstory, etc.) spawn agents and hope for the best. pi-stories enforces **deterministic gates between every non-deterministic step** — the pattern that Stripe and Mario Zechner proved at scale.
+Existing multi-agent tools spawn agents and hope for the best. pi-stories enforces **deterministic gates between every non-deterministic step** — the [D]/[N] pattern that Stripe and Mario Zechner proved at scale.
 
 ```
 [D] Pre-compute context  →  [N] Scout (Haiku)  →  [D] Validate
@@ -24,63 +24,123 @@ bun run src/index.ts init
 bun run src/index.ts run "fix the login validation bug"
 ```
 
-## Commands (v0.1)
+## 32 Commands
 
-```
-pi-stories init              Create .pi-stories/ with defaults
-pi-stories run <task>        Execute Blueprint Engine pipeline
-  --budget <amount>          Cost ceiling (default: $5.00)
-  --dry-run                  Show plan without executing
-  --skip-review              Skip review phase
-  --retry <n>                Max retries per step (default: 3)
-pi-stories status            Show active/recent runs
-pi-stories costs             Token/cost breakdown
-pi-stories doctor            Health check
-```
+### Core (v0.1)
+| Command | Description |
+|---------|-------------|
+| `init` | Create `.pi-stories/` with auto-detected gates |
+| `run <task>` | Execute Blueprint Engine [D]/[N] pipeline |
+| `status` | Active agents, recent runs, system state |
+| `config` | View current configuration |
+| `version` | Build info |
 
-## How It's Different
+### Observability (v0.2)
+| Command | Description |
+|---------|-------------|
+| `costs` | Token/cost breakdown (by tier, runtime, run) |
+| `trace <run-id>` | Chronological event timeline |
+| `replay <run-id>` | Replay agent actions with timing |
+| `logs` | Query NDJSON event logs |
+| `dashboard` | Live TUI dashboard with auto-refresh |
+| `export <run-id>` | Export run as shareable JSON report |
 
-| Feature | Overstory | pi-stories |
-|---------|-----------|------------|
-| Core pattern | Sequential pipeline | **[D]/[N] interleaving** with gates |
-| Cost routing | None | **3-tier auto-escalation** (Haiku → Sonnet → Opus) |
-| Budget control | After the fact | **Per-run ceiling with pre-step checks** |
-| Retry strategy | Manual | **Auto-retry with model escalation** |
-| State format | 4 SQLite DBs | **JSON on disk** (jq-queryable, git-diffable) |
-| Gate detection | Manual | **Auto-detect** from package.json/pyproject.toml/go.mod |
-| Runtimes | 4 (Claude, Pi, Copilot, Codex) | **18 CLIs** (all major agents) |
+### Multi-Agent (v0.3)
+| Command | Description |
+|---------|-------------|
+| `sling <task>` | Spawn a single named agent |
+| `parallel <task>` | Launch N agents simultaneously |
+| `mail send` | Send inter-agent message |
+| `mail check` | Check inbox (priority-sorted) |
+| `mail list` | List all messages |
+| `mail read <id>` | Mark as read |
+| `mail reply <id>` | Reply to a message |
+| `mail purge` | Delete old messages |
+| `merge` | Merge agent branches (tiered conflict resolution) |
+| `queue` | Show merge queue |
+| `nudge <agent>` | Poke a stalled agent |
+| `stop <agent>` | Terminate an agent |
+
+### Full System (v0.4)
+| Command | Description |
+|---------|-------------|
+| `doctor` | 11-category health check |
+| `watch` | Watchdog daemon (stall detection, cost ceiling) |
+| `agents` | List all 18 runtimes and their availability |
+| `sessions` | List agent sessions |
+| `inspect <agent>` | Deep inspection of agent state |
+| `monitor <agent>` | Real-time output stream |
+| `worktree <action>` | Manage git worktrees for parallel agents |
+| `clean` | Clean runtime state (runs, mail, sessions) |
 
 ## Architecture
 
 ```
 .pi-stories/
   config.yaml          # Runtimes, models, budget, gates
+  mail.db              # SQLite — inter-agent messaging
+  sessions.db          # SQLite — agent lifecycle tracking
+  merge-queue.db       # SQLite — FIFO merge queue
+  costs.db             # SQLite — aggregate cost history
   runs/
     {run-id}/
-      context.json     # [D] Pre-computed context
-      scout.json       # [N] Scout findings
-      plan.json        # [N] Implementation plan
-      review.json      # [N] Review results
-      cost.json        # Cost per phase
-      events.jsonl     # Event log (trace/replay)
       status.json      # Pipeline state (resumable)
-  costs.db             # Aggregate cost history
+      events.jsonl     # Event log (trace/replay)
+      {step-id}.json   # Agent output per step
+  worktrees/
+    {branch}/          # Isolated git worktrees
 ```
 
-## Cost Tiers
+## 18 Runtimes
 
-| Tier | Role | Default Model | ~Cost |
-|------|------|---------------|-------|
-| 1 | Scout, quick tasks | claude-haiku-4-5 | $0.001/call |
-| 2 | Build, plan | claude-sonnet-4-5 | $0.01/call |
-| 3 | Review, architect | claude-opus-4-5 | $0.10/call |
+**Local agents:** pi, claude, gemini-cli, codex, aider, goose, amp, cursor, antigravity, gemini
+**Remote backends:** gh-agent, jules, e2b
+**Platform:** openclaw
+**Tools:** docker, gh, beepctl, pi-messenger
 
-## Roadmap
+## Cost Routing
 
-- **v0.1** — Core 5 commands, [D]/[N] pipeline, cost tracking
-- **v0.2** — Observability: trace, replay, dashboard, logs
-- **v0.3** — Multi-agent: sling, mail, merge, nudge
-- **v0.4** — Full parity: watchdog, monitor, export, config
+| Tier | Role | Default Model | ~Cost/call |
+|------|------|---------------|------------|
+| 1 | Scout, triage | claude-haiku-4-5 | $0.001 |
+| 2 | Build, plan | claude-sonnet-4-5 | $0.01 |
+| 3 | Review, architect | claude-opus-4-5 | $0.10 |
+
+Budget ceiling enforced per-step. Watchdog enforces daily ceiling.
+
+## Merge Queue
+
+4-tier conflict resolution:
+1. **Textual auto-merge** — git handles it
+2. **Ours/theirs heuristic** — lockfiles, config
+3. **AI resolver** — agent analyzes the conflict
+4. **Human required** — opens for manual resolution
+
+## Compared to Overstory
+
+| Feature | Overstory | pi-stories |
+|---------|-----------|------------|
+| Commands | 32 | **32** |
+| Core pattern | Sequential pipeline | **[D]/[N] interleaving** |
+| Cost routing | None | **3-tier auto-escalation** |
+| Budget control | After the fact | **Per-run + daily ceiling** |
+| Retry strategy | Manual | **Auto-retry with escalation** |
+| Databases | 4 SQLite | **4 SQLite** (mail, sessions, merge, costs) |
+| Gate detection | Manual | **Auto-detect** |
+| Runtimes | 4 | **18** |
+| Conflict resolution | None | **4-tier merge** |
+| Watchdog | Basic | **Stall detection + cost ceiling + auto-kill** |
+| Parallel agents | Yes | **Yes + git worktrees** |
+| Health check | 11 categories | **11 categories** |
+
+## Tech Stack
+
+- **Runtime:** Bun
+- **Language:** TypeScript (strict mode)
+- **CLI:** Commander.js
+- **Databases:** bun:sqlite (WAL mode)
+- **Linting:** Biome
+- **Output:** chalk
 
 ## License
 

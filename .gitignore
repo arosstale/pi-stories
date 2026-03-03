@@ -1,4 +1,7 @@
 node_modules/
 bun.lockb
 .pi-stories/runs/
-.pi-stories/costs.db*
+.pi-stories/*.db
+.pi-stories/*.db-wal
+.pi-stories/*.db-shm
+.pi-stories/worktrees/

@@ -1,4 +1,4 @@
-/** pi-stories core types */
+/** pi-stories core types — v0.1 through v0.4 */
 
 // ─── Pipeline ───────────────────────────────────────────
 
@@ -159,4 +159,112 @@ export interface HealthCheck {
 	status: HealthStatus;
 	message: string;
 	fix?: string;
+}
+
+// ─── Mail (v0.3) ────────────────────────────────────────
+
+export type MailPriority = "low" | "normal" | "high" | "urgent";
+export type MailType =
+	| "status"
+	| "question"
+	| "result"
+	| "error"
+	| "worker_done"
+	| "merge_ready"
+	| "escalation"
+	| "health_check"
+	| "dispatch"
+	| "nudge";
+
+export interface MailMessage {
+	id: string;
+	from: string;
+	to: string;
+	subject: string;
+	body: string;
+	type: MailType;
+	priority: MailPriority;
+	threadId?: string;
+	replyTo?: string;
+	payload?: Record<string, unknown>;
+	read: boolean;
+	createdAt: string;
+}
+
+// ─── Agent Session (v0.3) ───────────────────────────────
+
+export type AgentSessionStatus = "running" | "completed" | "failed" | "stalled" | "killed";
+
+export interface AgentSession {
+	id: string;
+	name: string;
+	runtime: string;
+	role: AgentRole;
+	task: string;
+	runId?: string;
+	pid?: number;
+	worktree?: string;
+	branch?: string;
+	parentAgent?: string;
+	depth: number;
+	status: AgentSessionStatus;
+	startedAt: string;
+	completedAt?: string;
+	lastActivityAt: string;
+	tokenCount: number;
+	cost: number;
+}
+
+// ─── Merge Queue (v0.3) ─────────────────────────────────
+
+export type MergeStatus = "pending" | "merging" | "merged" | "conflict" | "failed";
+
+export interface MergeEntry {
+	id: string;
+	branch: string;
+	agentName: string;
+	runId: string;
+	status: MergeStatus;
+	conflictFiles?: string[];
+	resolvedAt?: string;
+	createdAt: string;
+}
+
+export type ConflictTier = 1 | 2 | 3 | 4;
+// 1: textual auto-merge, 2: ours/theirs heuristic, 3: AI resolver, 4: human required
+
+// ─── Watchdog (v0.4) ────────────────────────────────────
+
+export interface WatchdogConfig {
+	interval: number;
+	stallThreshold: number;
+	maxRestarts: number;
+	costCeiling: number;
+}
+
+// ─── Dashboard (v0.2) ───────────────────────────────────
+
+export interface DashboardState {
+	runs: RunState[];
+	agents: AgentSession[];
+	mail: { unread: number; total: number };
+	costs: { today: number; total: number };
+}
+
+// ─── Config Extensions ──────────────────────────────────
+
+export interface FullConfig extends ProjectConfig {
+	mail: {
+		enabled: boolean;
+		purgeAfterDays: number;
+	};
+	watchdog: WatchdogConfig;
+	merge: {
+		targetBranch: string;
+		autoMerge: boolean;
+		maxConflictTier: ConflictTier;
+	};
+	dashboard: {
+		refreshInterval: number;
+	};
 }
