@@ -88,6 +88,7 @@ program
 		const result = await runPipeline({
 			task,
 			config: pipelineConfig,
+			projectConfig: config,
 			cwd: root,
 			dryRun: opts.dryRun,
 			onStep: (step, res) => {
@@ -395,15 +396,26 @@ program
 	.option("--role <role>", "Agent role", "builder")
 	.option("--run-id <id>", "Associate with a run")
 	.option("--depth <n>", "Hierarchy depth", "0")
+	.option("--long", "L-thread: long-running, no timeout")
+	.option("--no-review", "Z-thread: zero-touch, fire and forget")
+	.option("--timeout <min>", "Max runtime in minutes (L-thread default: 60)")
 	.action(async (task: string, opts) => {
 		const root = findProjectRoot();
 		requireInit(root);
 		const configDir = getConfigDir(root);
 
 		const name = opts.name ?? `${opts.role}-${Date.now().toString(36)}`;
+		const isLong = !!opts.long;
+		const isZeroTouch = opts.review === false; // Commander parses --no-review as review: false
+		const threadType = classifyThread("sling", {
+			long: isLong,
+			noReview: isZeroTouch,
+			maxDuration: opts.timeout ? Number(opts.timeout) * 60000 : undefined,
+		});
+		const threadIcons: Record<string, string> = { base: "🚀", L: "⏳", Z: "🔥" };
 
-		console.log(chalk.bold(`\n🚀 Slinging agent: ${name}`));
-		console.log(chalk.dim(`   Runtime: ${opts.runtime} | Role: ${opts.role}\n`));
+		console.log(chalk.bold(`\n${threadIcons[threadType] ?? "🚀"} Slinging agent: ${name} [${threadType}-thread]`));
+		console.log(chalk.dim(`   Runtime: ${opts.runtime} | Role: ${opts.role}${isLong ? " | Long-running" : ""}${isZeroTouch ? " | Zero-touch" : ""}\n`));
 
 		const session = createSession(configDir, {
 			name,
@@ -422,33 +434,89 @@ program
 		});
 
 		updateSession(configDir, session.id, { pid: proc.pid });
+		const startTime = Date.now();
+
+		// Z-thread: fire and forget — don't await
+		if (isZeroTouch) {
+			console.log(`  Agent ${name} dispatched (PID: ${proc.pid}) — zero-touch, no review.`);
+			proc.exited.then((code) => {
+				updateSession(configDir, session.id, {
+					status: code === 0 ? "completed" : "failed",
+				});
+				const duration = (Date.now() - startTime) / 1000;
+				recordThread(configDir, {
+					threadId: session.id,
+					type: "Z",
+					toolCalls: 0,
+					duration,
+					checkpoints: 0,
+					cost: 0,
+					width: 1,
+					depth: Number.parseInt(opts.depth, 10),
+					reviewed: false,
+				});
+			}).catch(() => {});
+			return;
+		}
+
 		console.log(`  Agent ${name} spawned (PID: ${proc.pid})`);
+
+		// L-thread: timeout
+		let timedOut = false;
+		if (isLong || opts.timeout) {
+			const timeoutMs = opts.timeout ? Number(opts.timeout) * 60000 : 3600000; // default 60 min
+			const timer = setTimeout(() => {
+				timedOut = true;
+				try { process.kill(proc.pid, "SIGTERM"); } catch { /* */ }
+			}, timeoutMs);
+			proc.exited.then(() => clearTimeout(timer));
+		}
 
 		const exitCode = await proc.exited;
 		const output = await new Response(proc.stdout).text();
+		const stderr = await new Response(proc.stderr).text();
+		const duration = (Date.now() - startTime) / 1000;
 
 		updateSession(configDir, session.id, {
-			status: exitCode === 0 ? "completed" : "failed",
+			status: timedOut ? "killed" : exitCode === 0 ? "completed" : "failed",
 		});
 
-		// Record as base/L/Z thread
+		// Record thread with parsed cost
 		try {
-			const startTime = new Date(session.startedAt).getTime();
-			const duration = (Date.now() - startTime) / 1000;
+			// Import parseCost inline to avoid circular dep
+			const { parseCostFromOutput } = await import("./pipeline/cost-parser.ts");
+			const cost = parseCostFromOutput(opts.runtime, output, stderr);
+
 			recordThread(configDir, {
 				threadId: session.id,
-				type: classifyThread("sling", opts),
-				toolCalls: 0, // TODO: parse from runtime output
+				type: threadType,
+				toolCalls: 0,
+				duration,
+				checkpoints: 0,
+				cost: cost?.cost ?? 0,
+				width: 1,
+				depth: Number.parseInt(opts.depth, 10),
+				reviewed: !isZeroTouch,
+			});
+		} catch {
+			recordThread(configDir, {
+				threadId: session.id,
+				type: threadType,
+				toolCalls: 0,
 				duration,
 				checkpoints: 0,
 				cost: 0,
 				width: 1,
 				depth: Number.parseInt(opts.depth, 10),
-				reviewed: true,
+				reviewed: !isZeroTouch,
 			});
-		} catch { /* */ }
+		}
 
-		console.log(`\n  ${exitCode === 0 ? "✅" : "❌"} Agent ${name} ${exitCode === 0 ? "completed" : "failed"}`);
+		if (timedOut) {
+			console.log(chalk.yellow(`\n  ⏰ Agent ${name} timed out after ${duration.toFixed(0)}s`));
+		} else {
+			console.log(`\n  ${exitCode === 0 ? "✅" : "❌"} Agent ${name} ${exitCode === 0 ? "completed" : "failed"} in ${duration.toFixed(1)}s`);
+		}
 		if (output.trim()) {
 			console.log(chalk.dim(`\n${output.slice(0, 500)}`));
 		}
@@ -929,6 +997,7 @@ program
 	.option("--agents <n>", "Number of agents", "3")
 	.option("--runtime <rt>", "Runtime to use", "pi")
 	.option("--roles <roles>", "Comma-separated roles", "scout,builder,reviewer")
+	.option("--fusion", "F-thread: same task to all agents, pick longest output as winner")
 	.action(async (task: string, opts) => {
 		const root = findProjectRoot();
 		requireInit(root);
@@ -936,58 +1005,80 @@ program
 
 		const n = Number.parseInt(opts.agents, 10);
 		const roles = opts.roles.split(",");
+		const isFusion = !!opts.fusion;
+		const startTime = Date.now();
 
-		console.log(chalk.bold(`\n⚡ Parallel launch: ${n} agents\n`));
+		console.log(chalk.bold(`\n${isFusion ? "🔀 Fusion" : "⚡ Parallel"} launch: ${n} agents\n`));
 
-		const sessions = [];
+		const sessions: Array<{ session: ReturnType<typeof createSession>; proc: ReturnType<typeof Bun.spawn>; name: string; role: string }> = [];
 		for (let i = 0; i < n; i++) {
-			const role = roles[i % roles.length];
-			const name = `${role}-${Date.now().toString(36)}-${i}`;
+			const role = isFusion ? "builder" : roles[i % roles.length];
+			const name = `${isFusion ? "fusion" : role}-${Date.now().toString(36)}-${i}`;
+			// Fusion: everyone gets the exact same task. Parallel: role-tagged.
+			const agentTask = isFusion ? task : `[${role}] ${task}`;
 
 			const session = createSession(configDir, {
 				name,
 				runtime: opts.runtime,
 				role: role as any,
-				task: `[${role}] ${task}`,
+				task: agentTask,
 				depth: 0,
 			});
 
-			const proc = Bun.spawn([opts.runtime, "--print", `[${role}] ${task}`], {
+			const proc = Bun.spawn([opts.runtime, "--print", agentTask], {
 				cwd: root,
 				stdout: "pipe",
 				stderr: "pipe",
 			});
 
 			updateSession(configDir, session.id, { pid: proc.pid });
-			sessions.push({ session, proc, name });
+			sessions.push({ session, proc, name, role });
 			console.log(`  🚀 ${name} (PID: ${proc.pid})`);
 		}
 
 		console.log(chalk.dim("\n  Waiting for all agents to complete...\n"));
 
+		const outputs: Array<{ name: string; output: string; code: number }> = [];
+
 		const results = await Promise.allSettled(
 			sessions.map(async ({ session, proc, name }) => {
 				const code = await proc.exited;
+				const output = await new Response(proc.stdout).text();
 				updateSession(configDir, session.id, {
 					status: code === 0 ? "completed" : "failed",
 				});
 				const icon = code === 0 ? chalk.green("✓") : chalk.red("✗");
-				console.log(`  ${icon} ${name} — exit ${code}`);
+				const outputLen = output.trim().length;
+				console.log(`  ${icon} ${name} — exit ${code}${isFusion ? ` (${outputLen} chars)` : ""}`);
+				outputs.push({ name, output, code });
 				return code;
 			}),
 		);
 
 		const passed = results.filter((r) => r.status === "fulfilled" && r.value === 0).length;
+		const duration = (Date.now() - startTime) / 1000;
 
-		// Record as P-thread (or F-thread if --fusion)
+		// Fusion: pick the longest successful output as the winner
+		if (isFusion) {
+			const successful = outputs.filter((o) => o.code === 0).sort((a, b) => b.output.length - a.output.length);
+			if (successful.length > 0) {
+				const winner = successful[0];
+				console.log(chalk.bold.green(`\n  🏆 Winner: ${winner.name} (${winner.output.trim().length} chars)`));
+				if (winner.output.trim()) {
+					console.log(chalk.dim(`\n${winner.output.slice(0, 1000)}`));
+				}
+			} else {
+				console.log(chalk.red("\n  No successful outputs to fuse."));
+			}
+		}
+
+		// Record thread
 		try {
-			const configDir = getConfigDir(root);
-			const duration = (Date.now() - Date.now()) / 1000; // TODO: proper timing
 			recordThread(configDir, {
 				threadId: `par-${Date.now().toString(36)}`,
 				type: classifyThread("parallel", opts),
 				toolCalls: 0,
-				duration: 0,
+				duration,
 				checkpoints: 0,
 				cost: 0,
 				width: n,
@@ -996,7 +1087,7 @@ program
 			});
 		} catch { /* */ }
 
-		console.log(chalk.dim(`\n  ${passed}/${n} agents succeeded`));
+		console.log(chalk.dim(`\n  ${passed}/${n} agents succeeded in ${duration.toFixed(1)}s`));
 	});
 
 // ═══════════════════════════════════════════════════════════

@@ -88,7 +88,9 @@ function createRuntime(name: string): AgentRuntime {
 		},
 
 		async cost(_handle: RunHandle): Promise<CostEntry | undefined> {
-			return undefined; // TODO: parse from runtime output
+			// Cost is parsed at spawn time from stdout/stderr by cost-parser.ts
+			// This handle-based method is a fallback for runtimes that report cost separately.
+			return undefined;
 		},
 	};
 }

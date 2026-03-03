@@ -8,6 +8,7 @@ import type {
 	PipelineConfig,
 	PipelineEvent,
 	PipelineStep,
+	ProjectConfig,
 	RunState,
 	StepResult,
 	CostEntry,
@@ -20,6 +21,7 @@ import { emitEvent, flushEvents } from "../logging/events.ts";
 export interface EngineOptions {
 	task: string;
 	config: PipelineConfig;
+	projectConfig?: ProjectConfig;
 	cwd: string;
 	dryRun?: boolean;
 	onStep?: (step: PipelineStep, result: StepResult) => void;
@@ -151,7 +153,7 @@ async function executeStep(
 			result.retryCount = attempt;
 
 			try {
-				const agentResult = await runAgent(step, opts.task, state, opts.cwd, runDir);
+				const agentResult = await runAgent(step, opts.task, state, opts.cwd, runDir, opts.projectConfig);
 				result.status = "passed";
 				result.output = agentResult.output;
 				result.cost = agentResult.cost;

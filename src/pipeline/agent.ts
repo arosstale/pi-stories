@@ -1,7 +1,8 @@
 /** [N] Non-deterministic agent dispatch */
 
-import type { CostEntry, PipelineStep, RunState } from "../types.ts";
+import type { CostEntry, CostTier, PipelineStep, ProjectConfig, RunState } from "../types.ts";
 import { RuntimeError } from "../errors.ts";
+import { parseCostFromOutput, parseModel } from "./cost-parser.ts";
 
 export interface AgentResult {
 	output: string;
@@ -16,20 +17,31 @@ export async function runAgent(
 	state: RunState,
 	cwd: string,
 	runDir: string,
+	config?: ProjectConfig,
 ): Promise<AgentResult> {
-	const role = step.role ?? "builder";
 	const prompt = buildPrompt(step, task, state, runDir);
 
-	// For now, use pi as the default runtime
-	// TODO: runtime registry lookup based on config
-	const runtime = "pi";
+	// Resolve runtime from config: role → runtime mapping
+	const role = step.role ?? "builder";
+	const runtime = config?.runtimes?.[role] ?? "pi";
 
-	const result = await spawnAgent(runtime, prompt, cwd);
+	// Resolve model from config: tier → model mapping
+	const tier = step.tier ?? 2;
+	const model = config?.models?.[tier];
+
+	const result = await spawnAgent(runtime, prompt, cwd, model);
+
+	// Tag the cost with tier + runtime info
+	if (result.cost) {
+		result.cost.tier = tier;
+		result.cost.runtime = runtime;
+	}
+
 	return result;
 }
 
 /** Build the prompt for an agent step, injecting context */
-function buildPrompt(step: PipelineStep, task: string, state: RunState, runDir: string): string {
+function buildPrompt(step: PipelineStep, task: string, state: RunState, _runDir: string): string {
 	const parts: string[] = [];
 
 	parts.push(`# Task: ${task}`);
@@ -48,7 +60,6 @@ function buildPrompt(step: PipelineStep, task: string, state: RunState, runDir: 
 		parts.push("");
 	}
 
-	// Role-specific instructions
 	switch (step.role) {
 		case "scout":
 			parts.push("Find relevant code and context. Report file paths and key findings.");
@@ -73,13 +84,14 @@ function buildPrompt(step: PipelineStep, task: string, state: RunState, runDir: 
 	return parts.join("\n");
 }
 
-/** Spawn an agent CLI process and capture output */
+/** Spawn an agent CLI process and capture output + cost */
 async function spawnAgent(
 	runtime: string,
 	prompt: string,
 	cwd: string,
+	model?: string,
 ): Promise<AgentResult> {
-	const cmd = buildCommand(runtime, prompt);
+	const cmd = buildCommand(runtime, prompt, model);
 
 	const proc = Bun.spawn(cmd, {
 		cwd,
@@ -96,27 +108,29 @@ async function spawnAgent(
 		throw new RuntimeError(runtime, `Exit code ${exitCode}: ${stderr.slice(0, 500)}`);
 	}
 
-	// TODO: parse cost from runtime output (pi outputs cost info)
+	const cost = parseCostFromOutput(runtime, stdout, stderr);
+
 	return {
 		output: stdout,
-		model: undefined,
-		cost: undefined,
+		model: model ?? parseModel(runtime, stderr),
+		cost,
 	};
 }
 
-/** Build the CLI command for a runtime */
-function buildCommand(runtime: string, prompt: string): string[] {
+/** Build the CLI command for a runtime, including model override */
+function buildCommand(runtime: string, prompt: string, model?: string): string[] {
 	switch (runtime) {
 		case "pi":
-			return ["pi", "--print", prompt];
+			return model ? ["pi", "--print", "--model", model, prompt] : ["pi", "--print", prompt];
 		case "claude":
-			return ["claude", "--print", prompt];
+			return model ? ["claude", "--print", "--model", model, prompt] : ["claude", "--print", prompt];
 		case "codex":
-			return ["codex", "--quiet", prompt];
+			return model ? ["codex", "--quiet", "--model", model, prompt] : ["codex", "--quiet", prompt];
 		case "gemini-cli":
-			return ["gemini", prompt];
+			return model ? ["gemini", "--model", model, prompt] : ["gemini", prompt];
+		case "aider":
+			return model ? ["aider", "--message", prompt, "--yes", "--model", model] : ["aider", "--message", prompt, "--yes"];
 		default:
-			// Generic fallback — assume CLI accepts prompt as first arg
 			return [runtime, prompt];
 	}
 }
