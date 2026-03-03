@@ -1,5 +1,5 @@
-import { describe, test, expect } from "bun:test";
-import { parseCostFromOutput, findPricing, parseModel } from "../src/pipeline/cost-parser.ts";
+import { describe, expect, test } from "bun:test";
+import { findPricing, parseCostFromOutput, parseModel } from "../src/pipeline/cost-parser.ts";
 
 describe("parseCostFromOutput", () => {
 	test("parses pi-style cost output", () => {
@@ -7,11 +7,11 @@ describe("parseCostFromOutput", () => {
 		const result = parseCostFromOutput("pi", "", stderr);
 
 		expect(result).toBeDefined();
-		expect(result!.cost).toBe(0.0042);
-		expect(result!.inputTokens).toBe(1234);
-		expect(result!.outputTokens).toBe(567);
-		expect(result!.model).toBe("claude-sonnet-4");
-		expect(result!.tier).toBe(2);
+		expect(result?.cost).toBe(0.0042);
+		expect(result?.inputTokens).toBe(1234);
+		expect(result?.outputTokens).toBe(567);
+		expect(result?.model).toBe("claude-sonnet-4");
+		expect(result?.tier).toBe(2);
 	});
 
 	test("parses cost from stdout when stderr is empty", () => {
@@ -19,7 +19,7 @@ describe("parseCostFromOutput", () => {
 		const result = parseCostFromOutput("claude", stdout, "");
 
 		expect(result).toBeDefined();
-		expect(result!.cost).toBe(0.15);
+		expect(result?.cost).toBe(0.15);
 	});
 
 	test("parses token counts without dollar amount", () => {
@@ -27,11 +27,11 @@ describe("parseCostFromOutput", () => {
 		const result = parseCostFromOutput("pi", "", stderr);
 
 		expect(result).toBeDefined();
-		expect(result!.inputTokens).toBe(500);
-		expect(result!.outputTokens).toBe(200);
+		expect(result?.inputTokens).toBe(500);
+		expect(result?.outputTokens).toBe(200);
 		// Should calculate cost from pricing table
-		expect(result!.cost).toBeGreaterThan(0);
-		expect(result!.tier).toBe(1); // haiku = tier 1
+		expect(result?.cost).toBeGreaterThan(0);
+		expect(result?.tier).toBe(1); // haiku = tier 1
 	});
 
 	test("returns undefined when no cost info found", () => {
@@ -44,7 +44,7 @@ describe("parseCostFromOutput", () => {
 		const result = parseCostFromOutput("pi", "", stderr);
 
 		expect(result).toBeDefined();
-		expect(result!.cost).toBe(0);
+		expect(result?.cost).toBe(0);
 	});
 
 	test("handles large costs", () => {
@@ -52,7 +52,7 @@ describe("parseCostFromOutput", () => {
 		const result = parseCostFromOutput("claude", "", stderr);
 
 		expect(result).toBeDefined();
-		expect(result!.cost).toBe(12.5);
+		expect(result?.cost).toBe(12.5);
 	});
 });
 
@@ -60,13 +60,13 @@ describe("findPricing", () => {
 	test("exact match", () => {
 		const p = findPricing("claude-sonnet-4");
 		expect(p).toBeDefined();
-		expect(p!.tier).toBe(2);
+		expect(p?.tier).toBe(2);
 	});
 
 	test("partial match with date suffix", () => {
 		const p = findPricing("claude-haiku-4-5-20250101");
 		expect(p).toBeDefined();
-		expect(p!.tier).toBe(1);
+		expect(p?.tier).toBe(1);
 	});
 
 	test("returns undefined for unknown model", () => {

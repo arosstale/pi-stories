@@ -3,7 +3,7 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { MergeEntry, MergeStatus, ConflictTier } from "../types.ts";
+import type { ConflictTier, MergeEntry, MergeStatus } from "../types.ts";
 
 let db: Database | null = null;
 
@@ -28,7 +28,7 @@ export function initMergeDb(configDir: string): Database {
 		)
 	`);
 
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_merge_status ON merge_queue(status)`);
+	db.exec("CREATE INDEX IF NOT EXISTS idx_merge_status ON merge_queue(status)");
 
 	return db;
 }
@@ -59,9 +59,9 @@ export function enqueue(
 
 export function getQueue(configDir: string): MergeEntry[] {
 	const store = initMergeDb(configDir);
-	const rows = store
-		.prepare("SELECT * FROM merge_queue ORDER BY created_at ASC")
-		.all() as Array<Record<string, unknown>>;
+	const rows = store.prepare("SELECT * FROM merge_queue ORDER BY created_at ASC").all() as Array<
+		Record<string, unknown>
+	>;
 	return rows.map(rowToEntry);
 }
 
@@ -150,11 +150,14 @@ export async function resolveConflicts(
 	);
 	if (nonSourceConflicts.length === result.conflictFiles.length) {
 		// All conflicts are non-source — accept theirs
-		const proc = Bun.spawn(["git", "merge", branch, "-X", "theirs", "-m", `merge: ${branch} (tier 2)`], {
-			cwd,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
+		const proc = Bun.spawn(
+			["git", "merge", branch, "-X", "theirs", "-m", `merge: ${branch} (tier 2)`],
+			{
+				cwd,
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
 		const code = await proc.exited;
 		if (code === 0) return { tier: 2, success: true, files: nonSourceConflicts };
 	}

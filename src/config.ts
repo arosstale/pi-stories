@@ -1,7 +1,7 @@
 /** pi-stories configuration loader */
 
 import { existsSync } from "node:fs";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ConfigError } from "./errors.ts";
 import type { ProjectConfig } from "./types.ts";

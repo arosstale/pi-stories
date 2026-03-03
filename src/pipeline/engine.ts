@@ -1,22 +1,22 @@
 /** Blueprint Engine — the [D]/[N] pipeline orchestrator */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getConfigDir } from "../config.ts";
 import { BudgetExceededError, GateError, PipelineError } from "../errors.ts";
+import { emitEvent, flushEvents } from "../logging/events.ts";
 import type {
+	CostEntry,
 	PipelineConfig,
 	PipelineEvent,
 	PipelineStep,
 	ProjectConfig,
 	RunState,
 	StepResult,
-	CostEntry,
 } from "../types.ts";
-import { getConfigDir } from "../config.ts";
-import { runGate } from "./gates.ts";
 import { runAgent } from "./agent.ts";
-import { emitEvent, flushEvents } from "../logging/events.ts";
+import { runGate } from "./gates.ts";
 
 export interface EngineOptions {
 	task: string;
@@ -153,16 +153,20 @@ async function executeStep(
 			result.retryCount = attempt;
 
 			try {
-				const agentResult = await runAgent(step, opts.task, state, opts.cwd, runDir, opts.projectConfig);
+				const agentResult = await runAgent(
+					step,
+					opts.task,
+					state,
+					opts.cwd,
+					runDir,
+					opts.projectConfig,
+				);
 				result.status = "passed";
 				result.output = agentResult.output;
 				result.cost = agentResult.cost;
 
 				// Save agent output
-				await writeFile(
-					join(runDir, `${step.id}.json`),
-					JSON.stringify(agentResult, null, 2),
-				);
+				await writeFile(join(runDir, `${step.id}.json`), JSON.stringify(agentResult, null, 2));
 
 				break;
 			} catch (err) {

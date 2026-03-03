@@ -1,7 +1,7 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runPipeline } from "../src/pipeline/engine.ts";
 import type { PipelineConfig, PipelineStep, ProjectConfig } from "../src/types.ts";
 
@@ -19,13 +19,21 @@ describe("pipeline integration", () => {
 		await git.exited;
 		const add = Bun.spawn(["git", "add", "."], { cwd: tmpDir, stdout: "pipe", stderr: "pipe" });
 		await add.exited;
-		const commit = Bun.spawn(["git", "commit", "--allow-empty", "-m", "init"], { cwd: tmpDir, stdout: "pipe", stderr: "pipe" });
+		const commit = Bun.spawn(["git", "commit", "--allow-empty", "-m", "init"], {
+			cwd: tmpDir,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
 		await commit.exited;
 	});
 
 	afterEach(async () => {
 		await new Promise((r) => setTimeout(r, 50));
-		try { await rm(tmpDir, { recursive: true, force: true }); } catch { /* EBUSY */ }
+		try {
+			await rm(tmpDir, { recursive: true, force: true });
+		} catch {
+			/* EBUSY */
+		}
 	});
 
 	test("dry run shows plan without executing", async () => {

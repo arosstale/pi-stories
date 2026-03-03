@@ -1,7 +1,7 @@
 /** [D] Deterministic gates — lint, test, typecheck, format */
 
-import type { PipelineStep } from "../types.ts";
 import { GateError } from "../errors.ts";
+import type { PipelineStep } from "../types.ts";
 
 /** Run a deterministic gate step */
 export async function runGate(step: PipelineStep, cwd: string): Promise<string> {
@@ -24,10 +24,7 @@ export async function runGate(step: PipelineStep, cwd: string): Promise<string> 
 }
 
 /** Run a shell command and capture output */
-async function runCommand(
-	cmd: string,
-	cwd: string,
-): Promise<{ exitCode: number; output: string }> {
+async function runCommand(cmd: string, cwd: string): Promise<{ exitCode: number; output: string }> {
 	const proc = Bun.spawn(["bash", "-c", cmd], {
 		cwd,
 		stdout: "pipe",
@@ -45,9 +42,7 @@ async function runCommand(
 }
 
 /** Auto-detect available gates from project files */
-export async function detectGates(
-	cwd: string,
-): Promise<Record<string, string | undefined>> {
+export async function detectGates(cwd: string): Promise<Record<string, string | undefined>> {
 	const gates: Record<string, string | undefined> = {};
 
 	// Detect package manager and scripts

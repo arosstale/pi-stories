@@ -1,9 +1,9 @@
 /** pi-stories doctor — 11-category health check */
 
-import chalk from "chalk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { findProjectRoot, isInitialized, getConfigDir } from "../config.ts";
+import chalk from "chalk";
+import { findProjectRoot, getConfigDir, isInitialized } from "../config.ts";
 import { discoverRuntimes } from "../runtimes/registry.ts";
 import type { HealthCheck, HealthStatus } from "../types.ts";
 
@@ -15,7 +15,11 @@ interface CheckResult {
 	fix?: string;
 }
 
-export async function runDoctor(opts?: { category?: string; verbose?: boolean; fix?: boolean }): Promise<CheckResult[]> {
+export async function runDoctor(opts?: {
+	category?: string;
+	verbose?: boolean;
+	fix?: boolean;
+}): Promise<CheckResult[]> {
 	const results: CheckResult[] = [];
 	const root = findProjectRoot();
 	const configDir = getConfigDir(root);
@@ -34,7 +38,9 @@ export async function runDoctor(opts?: { category?: string; verbose?: boolean; f
 		ecosystem: () => checkEcosystem(),
 	};
 
-	const categoriesToRun = opts?.category ? { [opts.category]: categories[opts.category] } : categories;
+	const categoriesToRun = opts?.category
+		? { [opts.category]: categories[opts.category] }
+		: categories;
 
 	for (const [catName, checkFn] of Object.entries(categoriesToRun)) {
 		if (!checkFn) continue;
@@ -76,7 +82,8 @@ async function checkDependencies(): Promise<CheckResult[]> {
 		category: "dependencies",
 		status: jq.status === "ok" ? "ok" : "warn",
 		message: jq.message,
-		fix: jq.status !== "ok" ? "Install jq for JSON querying: https://jqlang.github.io/jq/" : undefined,
+		fix:
+			jq.status !== "ok" ? "Install jq for JSON querying: https://jqlang.github.io/jq/" : undefined,
 	});
 
 	return results;
@@ -169,7 +176,10 @@ async function checkGit(root: string): Promise<CheckResult[]> {
 		});
 
 		// Check branch
-		const branchProc = Bun.spawn(["git", "branch", "--show-current"], { cwd: root, stdout: "pipe" });
+		const branchProc = Bun.spawn(["git", "branch", "--show-current"], {
+			cwd: root,
+			stdout: "pipe",
+		});
 		await branchProc.exited;
 		const branch = (await new Response(branchProc.stdout).text()).trim();
 		results.push({
@@ -224,9 +234,19 @@ async function checkPermissions(root: string): Promise<CheckResult[]> {
 		await Bun.write(testFile, "test");
 		const { unlinkSync } = require("node:fs");
 		unlinkSync(testFile);
-		results.push({ name: "write-access", category: "permissions", status: "ok", message: "Write access confirmed" });
+		results.push({
+			name: "write-access",
+			category: "permissions",
+			status: "ok",
+			message: "Write access confirmed",
+		});
 	} catch {
-		results.push({ name: "write-access", category: "permissions", status: "fail", message: "Cannot write to .pi-stories/" });
+		results.push({
+			name: "write-access",
+			category: "permissions",
+			status: "fail",
+			message: "Cannot write to .pi-stories/",
+		});
 	}
 
 	return results;
@@ -239,7 +259,9 @@ async function checkDisk(configDir: string): Promise<CheckResult[]> {
 	try {
 		const runsDir = join(configDir, "runs");
 		if (existsSync(runsDir)) {
-			const entries = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: runsDir, onlyFiles: false }));
+			const entries = await Array.fromAsync(
+				new Bun.Glob("*").scan({ cwd: runsDir, onlyFiles: false }),
+			);
 			results.push({
 				name: "run-count",
 				category: "disk",
@@ -282,7 +304,10 @@ async function checkEcosystem(): Promise<CheckResult[]> {
 }
 
 /** Helper to check a CLI command */
-async function cmdCheck(cmd: string, args: string[]): Promise<{ status: HealthStatus; message: string }> {
+async function cmdCheck(
+	cmd: string,
+	args: string[],
+): Promise<{ status: HealthStatus; message: string }> {
 	try {
 		const proc = Bun.spawn([cmd, ...args], { stdout: "pipe", stderr: "pipe" });
 		const code = await proc.exited;
@@ -308,7 +333,11 @@ export function printDoctorResults(results: CheckResult[], verbose?: boolean): v
 			}
 
 			const icon =
-				check.status === "ok" ? chalk.green("✓") : check.status === "warn" ? chalk.yellow("⚠") : chalk.red("✗");
+				check.status === "ok"
+					? chalk.green("✓")
+					: check.status === "warn"
+						? chalk.yellow("⚠")
+						: chalk.red("✗");
 			console.log(`    ${icon} ${check.name.padEnd(24)} ${chalk.dim(check.message)}`);
 			if (check.fix && check.status !== "ok") {
 				console.log(chalk.dim(`      Fix: ${check.fix}`));

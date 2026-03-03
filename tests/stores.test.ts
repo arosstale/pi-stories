@@ -1,10 +1,30 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { sendMail, checkMail, listMail, markRead, purgeMail, closeMailDb } from "../src/mail/store.ts";
-import { createSession, updateSession, getActiveSessions, getSession, closeSessionDb } from "../src/sessions/store.ts";
-import { recordThread, calculateScorecard, saveScorecard, getHistory, getThreadBreakdown, closeThreadDb } from "../src/threads/scorecard.ts";
+import { join } from "node:path";
+import {
+	checkMail,
+	closeMailDb,
+	listMail,
+	markRead,
+	purgeMail,
+	sendMail,
+} from "../src/mail/store.ts";
+import {
+	closeSessionDb,
+	createSession,
+	getActiveSessions,
+	getSession,
+	updateSession,
+} from "../src/sessions/store.ts";
+import {
+	calculateScorecard,
+	closeThreadDb,
+	getHistory,
+	getThreadBreakdown,
+	recordThread,
+	saveScorecard,
+} from "../src/threads/scorecard.ts";
 import type { ThreadMetrics } from "../src/threads/types.ts";
 
 // ── Mail Store ────────────────────────────────────────
@@ -21,7 +41,11 @@ describe("mail store", () => {
 		closeMailDb();
 		// Give Windows a moment to release file handles
 		await new Promise((r) => setTimeout(r, 50));
-		try { await rm(dir, { recursive: true, force: true }); } catch { /* EBUSY on Windows */ }
+		try {
+			await rm(dir, { recursive: true, force: true });
+		} catch {
+			/* EBUSY on Windows */
+		}
 	});
 
 	test("send and check mail", () => {
@@ -42,15 +66,36 @@ describe("mail store", () => {
 
 	test("priority ordering", () => {
 		sendMail(dir, { from: "a", to: "x", subject: "low", body: "", type: "info", priority: "low" });
-		sendMail(dir, { from: "b", to: "x", subject: "high", body: "", type: "error", priority: "high" });
-		sendMail(dir, { from: "c", to: "x", subject: "normal", body: "", type: "info", priority: "normal" });
+		sendMail(dir, {
+			from: "b",
+			to: "x",
+			subject: "high",
+			body: "",
+			type: "error",
+			priority: "high",
+		});
+		sendMail(dir, {
+			from: "c",
+			to: "x",
+			subject: "normal",
+			body: "",
+			type: "info",
+			priority: "normal",
+		});
 
 		const inbox = checkMail(dir, "x");
 		expect(inbox[0].subject).toBe("high");
 	});
 
 	test("mark read", () => {
-		sendMail(dir, { from: "a", to: "b", subject: "test", body: "", type: "info", priority: "normal" });
+		sendMail(dir, {
+			from: "a",
+			to: "b",
+			subject: "test",
+			body: "",
+			type: "info",
+			priority: "normal",
+		});
 		const inbox = checkMail(dir, "b");
 		expect(inbox.length).toBe(1);
 
@@ -71,7 +116,14 @@ describe("mail store", () => {
 	});
 
 	test("purge all mail", () => {
-		sendMail(dir, { from: "a", to: "b", subject: "old", body: "", type: "info", priority: "normal" });
+		sendMail(dir, {
+			from: "a",
+			to: "b",
+			subject: "old",
+			body: "",
+			type: "info",
+			priority: "normal",
+		});
 		const purged = purgeMail(dir, { all: true });
 		expect(purged).toBe(1);
 		expect(listMail(dir).length).toBe(0);
@@ -91,7 +143,11 @@ describe("session store", () => {
 	afterEach(async () => {
 		closeSessionDb();
 		await new Promise((r) => setTimeout(r, 50));
-		try { await rm(dir, { recursive: true, force: true }); } catch { /* EBUSY */ }
+		try {
+			await rm(dir, { recursive: true, force: true });
+		} catch {
+			/* EBUSY */
+		}
 	});
 
 	test("create and retrieve session", () => {
@@ -107,7 +163,7 @@ describe("session store", () => {
 
 		const fetched = getSession(dir, session.id);
 		expect(fetched).toBeDefined();
-		expect(fetched!.name).toBe("test-builder");
+		expect(fetched?.name).toBe("test-builder");
 	});
 
 	test("update session status", () => {
@@ -121,8 +177,8 @@ describe("session store", () => {
 		updateSession(dir, session.id, { status: "completed", pid: 12345 });
 
 		const updated = getSession(dir, session.id);
-		expect(updated!.status).toBe("completed");
-		expect(updated!.pid).toBe(12345);
+		expect(updated?.status).toBe("completed");
+		expect(updated?.pid).toBe(12345);
 	});
 
 	test("list active sessions excludes completed", () => {
@@ -149,7 +205,11 @@ describe("thread scorecard", () => {
 	afterEach(async () => {
 		closeThreadDb();
 		await new Promise((r) => setTimeout(r, 50));
-		try { await rm(dir, { recursive: true, force: true }); } catch { /* EBUSY */ }
+		try {
+			await rm(dir, { recursive: true, force: true });
+		} catch {
+			/* EBUSY */
+		}
 	});
 
 	test("empty scorecard", () => {
@@ -182,12 +242,26 @@ describe("thread scorecard", () => {
 
 	test("trust ratio counts unreviewed threads", () => {
 		recordThread(dir, {
-			threadId: "t1", type: "Z", toolCalls: 5, duration: 10,
-			checkpoints: 0, cost: 0.01, width: 1, depth: 0, reviewed: false,
+			threadId: "t1",
+			type: "Z",
+			toolCalls: 5,
+			duration: 10,
+			checkpoints: 0,
+			cost: 0.01,
+			width: 1,
+			depth: 0,
+			reviewed: false,
 		});
 		recordThread(dir, {
-			threadId: "t2", type: "base", toolCalls: 3, duration: 5,
-			checkpoints: 0, cost: 0.01, width: 1, depth: 0, reviewed: true,
+			threadId: "t2",
+			type: "base",
+			toolCalls: 3,
+			duration: 5,
+			checkpoints: 0,
+			cost: 0.01,
+			width: 1,
+			depth: 0,
+			reviewed: true,
 		});
 
 		const sc = calculateScorecard(dir);
@@ -204,9 +278,39 @@ describe("thread scorecard", () => {
 	});
 
 	test("thread breakdown by type", () => {
-		recordThread(dir, { threadId: "a", type: "P", toolCalls: 0, duration: 0, checkpoints: 0, cost: 0, width: 2, depth: 0, reviewed: true });
-		recordThread(dir, { threadId: "b", type: "P", toolCalls: 0, duration: 0, checkpoints: 0, cost: 0, width: 3, depth: 0, reviewed: true });
-		recordThread(dir, { threadId: "c", type: "C", toolCalls: 0, duration: 0, checkpoints: 0, cost: 0, width: 1, depth: 0, reviewed: true });
+		recordThread(dir, {
+			threadId: "a",
+			type: "P",
+			toolCalls: 0,
+			duration: 0,
+			checkpoints: 0,
+			cost: 0,
+			width: 2,
+			depth: 0,
+			reviewed: true,
+		});
+		recordThread(dir, {
+			threadId: "b",
+			type: "P",
+			toolCalls: 0,
+			duration: 0,
+			checkpoints: 0,
+			cost: 0,
+			width: 3,
+			depth: 0,
+			reviewed: true,
+		});
+		recordThread(dir, {
+			threadId: "c",
+			type: "C",
+			toolCalls: 0,
+			duration: 0,
+			checkpoints: 0,
+			cost: 0,
+			width: 1,
+			depth: 0,
+			reviewed: true,
+		});
 
 		const breakdown = getThreadBreakdown(dir);
 		expect(breakdown.P).toBe(2);

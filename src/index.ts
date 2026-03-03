@@ -3,24 +3,52 @@
  *  v0.4: Full 32-command CLI with [D]/[N] pipeline, cost routing,
  *  mail, sessions, merge queue, watchdog, dashboard, and more. */
 
-import { Command } from "commander";
 import chalk from "chalk";
-import { initProject, isInitialized, loadConfig, findProjectRoot, getConfigDir } from "./config.ts";
-import { runPipeline } from "./pipeline/engine.ts";
-import { buildDefaultPipeline } from "./pipeline/steps.ts";
-import { detectGates } from "./pipeline/gates.ts";
-import { sendMail, checkMail, listMail, markRead, replyToMail, purgeMail, getMailStats } from "./mail/store.ts";
-import { createSession, updateSession, getSession, listSessions, getActiveSessions, getSessionStats } from "./sessions/store.ts";
-import { enqueue, getQueue, getPending, updateMergeStatus, attemptMerge, resolveConflicts } from "./merge/queue.ts";
-import { discoverRuntimes, listRuntimes } from "./runtimes/registry.ts";
+import { Command } from "commander";
+import { printDoctorResults, runDoctor } from "./commands/doctor.ts";
+import { findProjectRoot, getConfigDir, initProject, isInitialized, loadConfig } from "./config.ts";
 import { getCostSummary, getCostsByRun } from "./costs/store.ts";
 import { readEvents } from "./logging/events.ts";
-import { startWatchdog } from "./watchdog/daemon.ts";
-import { runDoctor, printDoctorResults } from "./commands/doctor.ts";
-import type { PipelineConfig, MailType, MailPriority } from "./types.ts";
-import { recordThread, calculateScorecard, saveScorecard, getHistory, getThreadBreakdown } from "./threads/scorecard.ts";
+import {
+	checkMail,
+	getMailStats,
+	listMail,
+	markRead,
+	purgeMail,
+	replyToMail,
+	sendMail,
+} from "./mail/store.ts";
+import {
+	attemptMerge,
+	enqueue,
+	getPending,
+	getQueue,
+	resolveConflicts,
+	updateMergeStatus,
+} from "./merge/queue.ts";
+import { runPipeline } from "./pipeline/engine.ts";
+import { detectGates } from "./pipeline/gates.ts";
+import { buildDefaultPipeline } from "./pipeline/steps.ts";
+import { discoverRuntimes, listRuntimes } from "./runtimes/registry.ts";
+import {
+	createSession,
+	getActiveSessions,
+	getSession,
+	getSessionStats,
+	listSessions,
+	updateSession,
+} from "./sessions/store.ts";
+import {
+	calculateScorecard,
+	getHistory,
+	getThreadBreakdown,
+	recordThread,
+	saveScorecard,
+} from "./threads/scorecard.ts";
 import { classifyThread } from "./threads/types.ts";
 import type { ThreadMetrics } from "./threads/types.ts";
+import type { MailPriority, MailType, PipelineConfig } from "./types.ts";
+import { startWatchdog } from "./watchdog/daemon.ts";
 
 const program = new Command();
 
@@ -117,14 +145,21 @@ program
 					depth: 0,
 					reviewed: !opts.skipReview,
 				});
-			} catch { /* scorecard db may not exist yet */ }
+			} catch {
+				/* scorecard db may not exist yet */
+			}
 		}
 
-		console.log("\n" + "─".repeat(50));
-		const statusMsg = result.status === "passed" ? chalk.green.bold("✅ Completed")
-			: result.status === "skipped" ? chalk.blue.bold("📋 Dry run")
-			: chalk.red.bold("❌ Failed");
-		console.log(`${statusMsg}  ${chalk.dim(`${result.id} | $${result.totalCost.toFixed(4)} | ${result.totalTokens} tokens`)}`);
+		console.log(`\n${"─".repeat(50)}`);
+		const statusMsg =
+			result.status === "passed"
+				? chalk.green.bold("✅ Completed")
+				: result.status === "skipped"
+					? chalk.blue.bold("📋 Dry run")
+					: chalk.red.bold("❌ Failed");
+		console.log(
+			`${statusMsg}  ${chalk.dim(`${result.id} | $${result.totalCost.toFixed(4)} | ${result.totalTokens} tokens`)}`,
+		);
 		process.exit(result.status === "passed" || result.status === "skipped" ? 0 : 1);
 	});
 
@@ -150,7 +185,9 @@ program
 				}
 				console.log("");
 			}
-		} catch { /* sessions db may not exist yet */ }
+		} catch {
+			/* sessions db may not exist yet */
+		}
 
 		// Mail
 		try {
@@ -158,7 +195,9 @@ program
 			if (mail.total > 0) {
 				console.log(`  📬 Mail: ${mail.unread} unread / ${mail.total} total`);
 			}
-		} catch { /* */ }
+		} catch {
+			/* */
+		}
 
 		// Merge queue
 		try {
@@ -166,7 +205,9 @@ program
 			if (pending.length > 0) {
 				console.log(`  🔀 Merge queue: ${pending.length} pending`);
 			}
-		} catch { /* */ }
+		} catch {
+			/* */
+		}
 
 		// Recent runs
 		const runsDir = `${configDir}/runs`;
@@ -175,7 +216,11 @@ program
 			if (entries.length > 0) {
 				const runs = [];
 				for (const entry of entries) {
-					try { runs.push(JSON.parse(await Bun.file(`${runsDir}/${entry}`).text())); } catch { /* */ }
+					try {
+						runs.push(JSON.parse(await Bun.file(`${runsDir}/${entry}`).text()));
+					} catch {
+						/* */
+					}
 				}
 				runs.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 
@@ -185,7 +230,9 @@ program
 					console.log(`    ${icon} ${run.id} $${(run.totalCost ?? 0).toFixed(4)} — ${run.task}`);
 				}
 			}
-		} catch { /* */ }
+		} catch {
+			/* */
+		}
 	});
 
 // ═══════════════════════════════════════════════════════════
@@ -231,7 +278,9 @@ program
 				const entries = getCostsByRun(configDir, opts.run);
 				console.log(chalk.bold(`\n  Run ${opts.run}:`));
 				for (const e of entries) {
-					console.log(`    ${e.model} — $${e.cost.toFixed(4)} (${e.inputTokens + e.outputTokens} tokens)`);
+					console.log(
+						`    ${e.model} — $${e.cost.toFixed(4)} (${e.inputTokens + e.outputTokens} tokens)`,
+					);
 				}
 			}
 		} catch {
@@ -325,7 +374,9 @@ program
 		let filtered = allEvents;
 		if (opts.type) filtered = filtered.filter((e) => e.type.includes(opts.type));
 
-		console.log(chalk.bold(`\n📋 Logs (${Math.min(filtered.length, limit)} of ${filtered.length})\n`));
+		console.log(
+			chalk.bold(`\n📋 Logs (${Math.min(filtered.length, limit)} of ${filtered.length})\n`),
+		);
 
 		for (const event of filtered.slice(0, limit)) {
 			const time = new Date(event.timestamp).toLocaleTimeString();
@@ -351,19 +402,29 @@ program
 
 			try {
 				const sessionStats = getSessionStats(configDir);
-				console.log(`  Agents: ${chalk.green(String(sessionStats.active))} active, ${sessionStats.completed} done, ${sessionStats.failed} failed`);
-				console.log(`  Cost: $${sessionStats.totalCost.toFixed(4)} | ${sessionStats.totalTokens.toLocaleString()} tokens`);
-			} catch { /* */ }
+				console.log(
+					`  Agents: ${chalk.green(String(sessionStats.active))} active, ${sessionStats.completed} done, ${sessionStats.failed} failed`,
+				);
+				console.log(
+					`  Cost: $${sessionStats.totalCost.toFixed(4)} | ${sessionStats.totalTokens.toLocaleString()} tokens`,
+				);
+			} catch {
+				/* */
+			}
 
 			try {
 				const mail = getMailStats(configDir);
 				console.log(`  Mail: ${mail.unread} unread / ${mail.total} total`);
-			} catch { /* */ }
+			} catch {
+				/* */
+			}
 
 			try {
 				const pending = getPending(configDir);
 				console.log(`  Merge: ${pending.length} pending`);
-			} catch { /* */ }
+			} catch {
+				/* */
+			}
 
 			try {
 				const active = getActiveSessions(configDir);
@@ -371,10 +432,14 @@ program
 					console.log(chalk.bold("\n  Active:"));
 					for (const s of active) {
 						const dur = ((Date.now() - new Date(s.startedAt).getTime()) / 1000).toFixed(0);
-						console.log(`    🤖 ${s.name.padEnd(16)} ${s.runtime.padEnd(8)} ${s.role.padEnd(10)} ${dur}s  $${s.cost.toFixed(4)}`);
+						console.log(
+							`    🤖 ${s.name.padEnd(16)} ${s.runtime.padEnd(8)} ${s.role.padEnd(10)} ${dur}s  $${s.cost.toFixed(4)}`,
+						);
 					}
 				}
-			} catch { /* */ }
+			} catch {
+				/* */
+			}
 
 			console.log(chalk.dim(`\n  Refreshing every ${interval / 1000}s — Ctrl+C to exit`));
 		};
@@ -414,8 +479,16 @@ program
 		});
 		const threadIcons: Record<string, string> = { base: "🚀", L: "⏳", Z: "🔥" };
 
-		console.log(chalk.bold(`\n${threadIcons[threadType] ?? "🚀"} Slinging agent: ${name} [${threadType}-thread]`));
-		console.log(chalk.dim(`   Runtime: ${opts.runtime} | Role: ${opts.role}${isLong ? " | Long-running" : ""}${isZeroTouch ? " | Zero-touch" : ""}\n`));
+		console.log(
+			chalk.bold(
+				`\n${threadIcons[threadType] ?? "🚀"} Slinging agent: ${name} [${threadType}-thread]`,
+			),
+		);
+		console.log(
+			chalk.dim(
+				`   Runtime: ${opts.runtime} | Role: ${opts.role}${isLong ? " | Long-running" : ""}${isZeroTouch ? " | Zero-touch" : ""}\n`,
+			),
+		);
 
 		const session = createSession(configDir, {
 			name,
@@ -439,23 +512,25 @@ program
 		// Z-thread: fire and forget — don't await
 		if (isZeroTouch) {
 			console.log(`  Agent ${name} dispatched (PID: ${proc.pid}) — zero-touch, no review.`);
-			proc.exited.then((code) => {
-				updateSession(configDir, session.id, {
-					status: code === 0 ? "completed" : "failed",
-				});
-				const duration = (Date.now() - startTime) / 1000;
-				recordThread(configDir, {
-					threadId: session.id,
-					type: "Z",
-					toolCalls: 0,
-					duration,
-					checkpoints: 0,
-					cost: 0,
-					width: 1,
-					depth: Number.parseInt(opts.depth, 10),
-					reviewed: false,
-				});
-			}).catch(() => {});
+			proc.exited
+				.then((code) => {
+					updateSession(configDir, session.id, {
+						status: code === 0 ? "completed" : "failed",
+					});
+					const duration = (Date.now() - startTime) / 1000;
+					recordThread(configDir, {
+						threadId: session.id,
+						type: "Z",
+						toolCalls: 0,
+						duration,
+						checkpoints: 0,
+						cost: 0,
+						width: 1,
+						depth: Number.parseInt(opts.depth, 10),
+						reviewed: false,
+					});
+				})
+				.catch(() => {});
 			return;
 		}
 
@@ -467,7 +542,11 @@ program
 			const timeoutMs = opts.timeout ? Number(opts.timeout) * 60000 : 3600000; // default 60 min
 			const timer = setTimeout(() => {
 				timedOut = true;
-				try { process.kill(proc.pid, "SIGTERM"); } catch { /* */ }
+				try {
+					process.kill(proc.pid, "SIGTERM");
+				} catch {
+					/* */
+				}
 			}, timeoutMs);
 			proc.exited.then(() => clearTimeout(timer));
 		}
@@ -515,7 +594,9 @@ program
 		if (timedOut) {
 			console.log(chalk.yellow(`\n  ⏰ Agent ${name} timed out after ${duration.toFixed(0)}s`));
 		} else {
-			console.log(`\n  ${exitCode === 0 ? "✅" : "❌"} Agent ${name} ${exitCode === 0 ? "completed" : "failed"} in ${duration.toFixed(1)}s`);
+			console.log(
+				`\n  ${exitCode === 0 ? "✅" : "❌"} Agent ${name} ${exitCode === 0 ? "completed" : "failed"} in ${duration.toFixed(1)}s`,
+			);
 		}
 		if (output.trim()) {
 			console.log(chalk.dim(`\n${output.slice(0, 500)}`));
@@ -559,7 +640,8 @@ mailCmd
 		}
 		console.log(chalk.bold(`\n📬 ${messages.length} unread message(s)\n`));
 		for (const m of messages) {
-			const pri = m.priority === "urgent" ? chalk.red("‼") : m.priority === "high" ? chalk.yellow("!") : " ";
+			const pri =
+				m.priority === "urgent" ? chalk.red("‼") : m.priority === "high" ? chalk.yellow("!") : " ";
 			console.log(`  ${pri} ${m.id} from:${m.from} — ${m.subject}`);
 			console.log(chalk.dim(`    ${m.body.slice(0, 100)}`));
 		}
@@ -635,8 +717,8 @@ program
 		const toMerge = opts.branch
 			? pending.filter((e) => e.branch === opts.branch)
 			: opts.all
-			  ? pending
-			  : pending.slice(0, 1);
+				? pending
+				: pending.slice(0, 1);
 
 		if (toMerge.length === 0) {
 			console.log(chalk.dim("Nothing to merge."));
@@ -649,7 +731,9 @@ program
 			if (opts.dryRun) {
 				const result = await attemptMerge(root, entry.branch, opts.into);
 				const icon = result.success ? chalk.green("✓") : chalk.red("✗");
-				console.log(`  ${icon} ${entry.branch} — ${result.success ? "clean" : `${result.conflictFiles.length} conflicts`}`);
+				console.log(
+					`  ${icon} ${entry.branch} — ${result.success ? "clean" : `${result.conflictFiles.length} conflicts`}`,
+				);
 				continue;
 			}
 
@@ -659,7 +743,9 @@ program
 				console.log(chalk.green(`  ✓ ${entry.branch} merged (tier ${result.tier})`));
 			} else {
 				updateMergeStatus(configDir, entry.id, "conflict", result.files, result.tier);
-				console.log(chalk.red(`  ✗ ${entry.branch} — ${result.files.length} conflicts (tier ${result.tier})`));
+				console.log(
+					chalk.red(`  ✗ ${entry.branch} — ${result.files.length} conflicts (tier ${result.tier})`),
+				);
 			}
 		}
 	});
@@ -694,7 +780,11 @@ program
 			return;
 		}
 		if (session.pid) {
-			try { process.kill(session.pid, "SIGTERM"); } catch { /* */ }
+			try {
+				process.kill(session.pid, "SIGTERM");
+			} catch {
+				/* */
+			}
 		}
 		updateSession(configDir, session.id, { status: "killed" });
 		console.log(chalk.red(`⏹ Stopped ${session.name} (PID: ${session.pid})`));
@@ -723,11 +813,15 @@ program
 	.option("--cost-ceiling <amount>", "Daily cost ceiling", "50")
 	.option("--background", "Run in background")
 	.action(async (opts) => {
-		await startWatchdog(findProjectRoot(), {
-			interval: Number.parseInt(opts.interval, 10),
-			stallThreshold: Number.parseInt(opts.stall, 10),
-			costCeiling: Number.parseFloat(opts.costCeiling),
-		}, { background: opts.background });
+		await startWatchdog(
+			findProjectRoot(),
+			{
+				interval: Number.parseInt(opts.interval, 10),
+				stallThreshold: Number.parseInt(opts.stall, 10),
+				costCeiling: Number.parseFloat(opts.costCeiling),
+			},
+			{ background: opts.background },
+		);
 	});
 
 program
@@ -766,14 +860,18 @@ program
 			// Clean run directories
 			const runsDir = `${configDir}/runs`;
 			try {
-				const entries = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: runsDir, onlyFiles: false }));
+				const entries = await Array.fromAsync(
+					new Bun.Glob("*").scan({ cwd: runsDir, onlyFiles: false }),
+				);
 				for (const entry of entries) {
 					const { rmSync } = require("node:fs");
 					rmSync(`${runsDir}/${entry}`, { recursive: true, force: true });
 					cleaned++;
 				}
 				console.log(chalk.dim(`Removed ${entries.length} run directories.`));
-			} catch { /* */ }
+			} catch {
+				/* */
+			}
 		}
 
 		console.log(chalk.dim(`\nCleaned ${cleaned} items.`));
@@ -855,8 +953,17 @@ program
 
 		console.log(chalk.bold(`\n👥 Sessions (${sessions.length})\n`));
 		for (const s of sessions) {
-			const icon = s.status === "running" ? "🟢" : s.status === "completed" ? "✅" : s.status === "failed" ? "❌" : "⚪";
-			console.log(`  ${icon} ${s.name.padEnd(20)} ${s.runtime.padEnd(8)} ${s.role.padEnd(10)} $${s.cost.toFixed(4)}`);
+			const icon =
+				s.status === "running"
+					? "🟢"
+					: s.status === "completed"
+						? "✅"
+						: s.status === "failed"
+							? "❌"
+							: "⚪";
+			console.log(
+				`  ${icon} ${s.name.padEnd(20)} ${s.runtime.padEnd(8)} ${s.role.padEnd(10)} $${s.cost.toFixed(4)}`,
+			);
 		}
 	});
 
@@ -899,8 +1006,14 @@ program
 			console.log(chalk.red(`Agent "${agent}" not found.`));
 			return;
 		}
-		console.log(chalk.bold(`\n📡 Monitoring: ${session.name} (${session.runtime}/${session.role})\n`));
-		console.log(chalk.dim(`PID: ${session.pid} | Status: ${session.status} | Cost: $${session.cost.toFixed(4)}`));
+		console.log(
+			chalk.bold(`\n📡 Monitoring: ${session.name} (${session.runtime}/${session.role})\n`),
+		);
+		console.log(
+			chalk.dim(
+				`PID: ${session.pid} | Status: ${session.status} | Cost: $${session.cost.toFixed(4)}`,
+			),
+		);
 		console.log(chalk.dim("─".repeat(50)));
 
 		if (session.status !== "running") {
@@ -1010,7 +1123,12 @@ program
 
 		console.log(chalk.bold(`\n${isFusion ? "🔀 Fusion" : "⚡ Parallel"} launch: ${n} agents\n`));
 
-		const sessions: Array<{ session: ReturnType<typeof createSession>; proc: ReturnType<typeof Bun.spawn>; name: string; role: string }> = [];
+		const sessions: Array<{
+			session: ReturnType<typeof createSession>;
+			proc: ReturnType<typeof Bun.spawn>;
+			name: string;
+			role: string;
+		}> = [];
 		for (let i = 0; i < n; i++) {
 			const role = isFusion ? "builder" : roles[i % roles.length];
 			const name = `${isFusion ? "fusion" : role}-${Date.now().toString(36)}-${i}`;
@@ -1060,10 +1178,14 @@ program
 
 		// Fusion: pick the longest successful output as the winner
 		if (isFusion) {
-			const successful = outputs.filter((o) => o.code === 0).sort((a, b) => b.output.length - a.output.length);
+			const successful = outputs
+				.filter((o) => o.code === 0)
+				.sort((a, b) => b.output.length - a.output.length);
 			if (successful.length > 0) {
 				const winner = successful[0];
-				console.log(chalk.bold.green(`\n  🏆 Winner: ${winner.name} (${winner.output.trim().length} chars)`));
+				console.log(
+					chalk.bold.green(`\n  🏆 Winner: ${winner.name} (${winner.output.trim().length} chars)`),
+				);
 				if (winner.output.trim()) {
 					console.log(chalk.dim(`\n${winner.output.slice(0, 1000)}`));
 				}
@@ -1085,7 +1207,9 @@ program
 				depth: 0,
 				reviewed: true,
 			});
-		} catch { /* */ }
+		} catch {
+			/* */
+		}
 
 		console.log(chalk.dim(`\n  ${passed}/${n} agents succeeded in ${duration.toFixed(1)}s`));
 	});
@@ -1114,10 +1238,14 @@ program
 			}
 
 			console.log(chalk.bold("\n📈 Thread Scorecard History\n"));
-			console.log(`  ${"Week".padEnd(12)} ${"Width".padEnd(8)} ${"ToolCalls".padEnd(12)} ${"Depth".padEnd(8)} ${"Trust%".padEnd(8)} Threads`);
-			console.log("  " + "─".repeat(56));
+			console.log(
+				`  ${"Week".padEnd(12)} ${"Width".padEnd(8)} ${"ToolCalls".padEnd(12)} ${"Depth".padEnd(8)} ${"Trust%".padEnd(8)} Threads`,
+			);
+			console.log(`  ${"─".repeat(56)}`);
 			for (const s of history) {
-				console.log(`  ${s.weekOf.padEnd(12)} ${String(s.width).padEnd(8)} ${s.avgToolCalls.toFixed(1).padEnd(12)} ${s.avgDepth.toFixed(1).padEnd(8)} ${(s.trustRatio * 100).toFixed(0).padEnd(8)} ${s.totalThreads}`);
+				console.log(
+					`  ${s.weekOf.padEnd(12)} ${String(s.width).padEnd(8)} ${s.avgToolCalls.toFixed(1).padEnd(12)} ${s.avgDepth.toFixed(1).padEnd(8)} ${(s.trustRatio * 100).toFixed(0).padEnd(8)} ${s.totalThreads}`,
+				);
 			}
 			return;
 		}
@@ -1125,17 +1253,25 @@ program
 		const scorecard = calculateScorecard(configDir);
 		const breakdown = getThreadBreakdown(configDir);
 
-		console.log(chalk.bold("\n📊 Thread Scorecard — Week of " + scorecard.weekOf + "\n"));
+		console.log(chalk.bold(`\n📊 Thread Scorecard — Week of ${scorecard.weekOf}\n`));
 		console.log(`  📏 Width (max parallel):  ${chalk.bold(String(scorecard.width))} agents`);
 		console.log(`  ⏱  Time (avg tool calls): ${chalk.bold(scorecard.avgToolCalls.toFixed(1))}`);
 		console.log(`  📐 Depth (avg B-depth):   ${chalk.bold(scorecard.avgDepth.toFixed(1))}`);
-		console.log(`  🎯 Trust (no-review %):   ${chalk.bold((scorecard.trustRatio * 100).toFixed(0) + "%")}`);
+		console.log(
+			`  🎯 Trust (no-review %):   ${chalk.bold(`${(scorecard.trustRatio * 100).toFixed(0)}%`)}`,
+		);
 		console.log(`  🧵 Total threads:         ${scorecard.totalThreads}`);
 
 		if (Object.keys(breakdown).length > 0) {
 			console.log(chalk.bold("\n  Thread breakdown:"));
 			const threadIcons: Record<string, string> = {
-				base: "📌", P: "⚡", C: "⛓", F: "🔀", B: "🧠", L: "⏳", Z: "🚀",
+				base: "📌",
+				P: "⚡",
+				C: "⛓",
+				F: "🔀",
+				B: "🧠",
+				L: "⏳",
+				Z: "🚀",
 			};
 			for (const [type, count] of Object.entries(breakdown)) {
 				const icon = threadIcons[type] ?? "·";
@@ -1148,7 +1284,11 @@ program
 			console.log(chalk.green("\n  ✓ Scorecard saved for trend tracking."));
 		}
 
-		console.log(chalk.dim("\n  Thread types: base (sling), P (parallel), C (run), F (parallel --fusion), B (run with sub-agents), L (sling --long), Z (sling --no-review)"));
+		console.log(
+			chalk.dim(
+				"\n  Thread types: base (sling), P (parallel), C (run), F (parallel --fusion), B (run with sub-agents), L (sling --long), Z (sling --no-review)",
+			),
+		);
 	});
 
 program

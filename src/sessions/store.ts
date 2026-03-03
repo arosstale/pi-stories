@@ -3,13 +3,16 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { AgentSession, AgentSessionStatus, AgentRole } from "../types.ts";
+import type { AgentRole, AgentSession, AgentSessionStatus } from "../types.ts";
 
 let db: Database | null = null;
 
 /** Close the DB handle — required for tests and clean shutdown */
 export function closeSessionDb(): void {
-	if (db) { db.close(); db = null; }
+	if (db) {
+		db.close();
+		db = null;
+	}
 }
 
 export function initSessionDb(configDir: string): Database {
@@ -41,8 +44,8 @@ export function initSessionDb(configDir: string): Database {
 		)
 	`);
 
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)`);
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_run ON sessions(run_id)`);
+	db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)");
+	db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_run ON sessions(run_id)");
 
 	return db;
 }
@@ -120,7 +123,11 @@ export function updateSession(
 	if (updates.status !== undefined) {
 		sets.push("status = ?");
 		params.push(updates.status);
-		if (updates.status === "completed" || updates.status === "failed" || updates.status === "killed") {
+		if (
+			updates.status === "completed" ||
+			updates.status === "failed" ||
+			updates.status === "killed"
+		) {
 			sets.push("completed_at = ?");
 			params.push(now);
 		}
@@ -200,10 +207,24 @@ export function getSessionStats(configDir: string): {
 	totalTokens: number;
 } {
 	const store = initSessionDb(configDir);
-	const active = (store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'running'").get() as { c: number }).c;
-	const completed = (store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'completed'").get() as { c: number }).c;
-	const failed = (store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'failed'").get() as { c: number }).c;
-	const costs = store.prepare("SELECT SUM(cost) as total_cost, SUM(token_count) as total_tokens FROM sessions").get() as {
+	const active = (
+		store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'running'").get() as {
+			c: number;
+		}
+	).c;
+	const completed = (
+		store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'completed'").get() as {
+			c: number;
+		}
+	).c;
+	const failed = (
+		store.prepare("SELECT COUNT(*) as c FROM sessions WHERE status = 'failed'").get() as {
+			c: number;
+		}
+	).c;
+	const costs = store
+		.prepare("SELECT SUM(cost) as total_cost, SUM(token_count) as total_tokens FROM sessions")
+		.get() as {
 		total_cost: number | null;
 		total_tokens: number | null;
 	};

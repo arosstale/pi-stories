@@ -1,9 +1,12 @@
 /** Runtime registry — 18 CLIs normalized behind AgentRuntime interface */
 
-import type { AgentRuntime, AgentTask, RunHandle, AgentStatus, CostEntry } from "../types.ts";
+import type { AgentRuntime, AgentStatus, AgentTask, CostEntry, RunHandle } from "../types.ts";
 
 /** All known runtimes and their CLI commands */
-const RUNTIME_DEFS: Record<string, { cmd: string; args: (prompt: string) => string[]; parsesCost?: boolean }> = {
+const RUNTIME_DEFS: Record<
+	string,
+	{ cmd: string; args: (prompt: string) => string[]; parsesCost?: boolean }
+> = {
 	pi: { cmd: "pi", args: (p) => ["--print", p], parsesCost: true },
 	claude: { cmd: "claude", args: (p) => ["--print", p] },
 	"gemini-cli": { cmd: "gemini", args: (p) => [p] },
@@ -123,10 +126,18 @@ function createGenericRuntime(name: string): AgentRuntime {
 			}
 		},
 		async kill(h) {
-			try { process.kill(h.pid, "SIGTERM"); } catch { /* */ }
+			try {
+				process.kill(h.pid, "SIGTERM");
+			} catch {
+				/* */
+			}
 		},
-		async output() { return ""; },
-		async cost() { return undefined; },
+		async output() {
+			return "";
+		},
+		async cost() {
+			return undefined;
+		},
 	};
 }
 
@@ -141,7 +152,9 @@ export function listRuntimes(): string[] {
 }
 
 /** Check which runtimes are available */
-export async function discoverRuntimes(): Promise<Array<{ name: string; available: boolean; path?: string }>> {
+export async function discoverRuntimes(): Promise<
+	Array<{ name: string; available: boolean; path?: string }>
+> {
 	const results: Array<{ name: string; available: boolean; path?: string }> = [];
 
 	for (const name of Object.keys(RUNTIME_DEFS)) {

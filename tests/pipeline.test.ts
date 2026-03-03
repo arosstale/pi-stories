@@ -1,11 +1,11 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { detectGates, runGate } from "../src/pipeline/gates.ts";
 import { buildDefaultPipeline } from "../src/pipeline/steps.ts";
-import { runGate, detectGates } from "../src/pipeline/gates.ts";
 import { classifyThread } from "../src/threads/types.ts";
-import type { ProjectConfig, PipelineStep } from "../src/types.ts";
+import type { PipelineStep, ProjectConfig } from "../src/types.ts";
 
 // ── Pipeline Steps ────────────────────────────────────
 
@@ -45,8 +45,8 @@ describe("buildDefaultPipeline", () => {
 		const gateStep = steps.find((s) => s.id === "quality-gates");
 
 		expect(gateStep).toBeDefined();
-		expect(gateStep!.commands).toContain("biome check .");
-		expect(gateStep!.commands).toContain("tsc --noEmit");
+		expect(gateStep?.commands).toContain("biome check .");
+		expect(gateStep?.commands).toContain("tsc --noEmit");
 	});
 
 	test("skips quality gates when no gates configured", () => {
@@ -73,7 +73,7 @@ describe("buildDefaultPipeline", () => {
 		const steps = buildDefaultPipeline(config);
 		const testStep = steps.find((s) => s.id === "test");
 		expect(testStep).toBeDefined();
-		expect(testStep!.commands).toContain("bun test");
+		expect(testStep?.commands).toContain("bun test");
 	});
 
 	test("assigns correct tiers to [N] steps", () => {
@@ -90,10 +90,10 @@ describe("buildDefaultPipeline", () => {
 		const build = steps.find((s) => s.id === "build");
 		const review = steps.find((s) => s.id === "review");
 
-		expect(scout!.tier).toBe(1);  // Cheap — exploration
-		expect(plan!.tier).toBe(2);   // Mid — reasoning
-		expect(build!.tier).toBe(2);  // Mid — implementation
-		expect(review!.tier).toBe(3); // Expensive — judgment
+		expect(scout?.tier).toBe(1); // Cheap — exploration
+		expect(plan?.tier).toBe(2); // Mid — reasoning
+		expect(build?.tier).toBe(2); // Mid — implementation
+		expect(review?.tier).toBe(3); // Expensive — judgment
 	});
 
 	test("assigns correct roles to [N] steps", () => {
@@ -105,10 +105,10 @@ describe("buildDefaultPipeline", () => {
 		};
 
 		const steps = buildDefaultPipeline(config);
-		expect(steps.find((s) => s.id === "scout")!.role).toBe("scout");
-		expect(steps.find((s) => s.id === "plan")!.role).toBe("planner");
-		expect(steps.find((s) => s.id === "build")!.role).toBe("builder");
-		expect(steps.find((s) => s.id === "review")!.role).toBe("reviewer");
+		expect(steps.find((s) => s.id === "scout")?.role).toBe("scout");
+		expect(steps.find((s) => s.id === "plan")?.role).toBe("planner");
+		expect(steps.find((s) => s.id === "build")?.role).toBe("builder");
+		expect(steps.find((s) => s.id === "review")?.role).toBe("reviewer");
 	});
 
 	test("every step has a unique id", () => {

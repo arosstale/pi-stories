@@ -45,24 +45,41 @@ export function initCostDb(configDir: string): Database {
 		)
 	`);
 
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_cost_run ON cost_entries(run_id)`);
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_cost_date ON cost_entries(created_at)`);
+	db.exec("CREATE INDEX IF NOT EXISTS idx_cost_run ON cost_entries(run_id)");
+	db.exec("CREATE INDEX IF NOT EXISTS idx_cost_date ON cost_entries(created_at)");
 
 	return db;
 }
 
-export function recordCost(configDir: string, runId: string, stepId: string, entry: CostEntry): void {
+export function recordCost(
+	configDir: string,
+	runId: string,
+	stepId: string,
+	entry: CostEntry,
+): void {
 	const store = initCostDb(configDir);
 	store
 		.prepare(
 			"INSERT INTO cost_entries (run_id, step_id, runtime, model, input_tokens, output_tokens, cost, tier, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		)
-		.run(runId, stepId, entry.runtime, entry.model, entry.inputTokens, entry.outputTokens, entry.cost, entry.tier, new Date().toISOString());
+		.run(
+			runId,
+			stepId,
+			entry.runtime,
+			entry.model,
+			entry.inputTokens,
+			entry.outputTokens,
+			entry.cost,
+			entry.tier,
+			new Date().toISOString(),
+		);
 }
 
 export function getCostsByRun(configDir: string, runId: string): CostEntry[] {
 	const store = initCostDb(configDir);
-	const rows = store.prepare("SELECT * FROM cost_entries WHERE run_id = ? ORDER BY created_at").all(runId) as Array<Record<string, unknown>>;
+	const rows = store
+		.prepare("SELECT * FROM cost_entries WHERE run_id = ? ORDER BY created_at")
+		.all(runId) as Array<Record<string, unknown>>;
 	return rows.map(rowToEntry);
 }
 
@@ -75,16 +92,28 @@ export function getCostSummary(configDir: string): {
 } {
 	const store = initCostDb(configDir);
 
-	const total = (store.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries").get() as { s: number }).s;
+	const total = (
+		store.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries").get() as { s: number }
+	).s;
 
 	const todayStart = new Date();
 	todayStart.setHours(0, 0, 0, 0);
-	const today = (store.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries WHERE created_at >= ?").get(todayStart.toISOString()) as { s: number }).s;
+	const today = (
+		store
+			.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries WHERE created_at >= ?")
+			.get(todayStart.toISOString()) as { s: number }
+	).s;
 
 	const weekStart = new Date(Date.now() - 7 * 86400000);
-	const week = (store.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries WHERE created_at >= ?").get(weekStart.toISOString()) as { s: number }).s;
+	const week = (
+		store
+			.prepare("SELECT COALESCE(SUM(cost), 0) as s FROM cost_entries WHERE created_at >= ?")
+			.get(weekStart.toISOString()) as { s: number }
+	).s;
 
-	const tierRows = store.prepare("SELECT tier, SUM(cost) as s FROM cost_entries GROUP BY tier").all() as Array<{ tier: number; s: number }>;
+	const tierRows = store
+		.prepare("SELECT tier, SUM(cost) as s FROM cost_entries GROUP BY tier")
+		.all() as Array<{ tier: number; s: number }>;
 	const byTier: Record<CostTier, number> = { 1: 0, 2: 0, 3: 0 };
 	for (const row of tierRows) {
 		if (row.tier === 1 || row.tier === 2 || row.tier === 3) {
@@ -92,7 +121,9 @@ export function getCostSummary(configDir: string): {
 		}
 	}
 
-	const runtimeRows = store.prepare("SELECT runtime, SUM(cost) as s FROM cost_entries GROUP BY runtime").all() as Array<{ runtime: string; s: number }>;
+	const runtimeRows = store
+		.prepare("SELECT runtime, SUM(cost) as s FROM cost_entries GROUP BY runtime")
+		.all() as Array<{ runtime: string; s: number }>;
 	const byRuntime: Record<string, number> = {};
 	for (const row of runtimeRows) {
 		byRuntime[row.runtime] = row.s;

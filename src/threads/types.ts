@@ -12,13 +12,13 @@
 
 /** The 7 thread types — classification, not abstraction */
 export type ThreadType =
-	| "base"    // `sling` — single prompt → tool calls → review
-	| "P"       // `parallel` — multiple agents simultaneously
-	| "C"       // `run` — phased [D]/[N] pipeline with gates
-	| "F"       // `parallel --fusion` — same task × N, pick best
-	| "B"       // `run` with sub-agents — agents spawning agents
-	| "L"       // `sling --long` — extended autonomy (hours)
-	| "Z";      // `sling --no-review` — zero-touch, maximum trust
+	| "base" // `sling` — single prompt → tool calls → review
+	| "P" // `parallel` — multiple agents simultaneously
+	| "C" // `run` — phased [D]/[N] pipeline with gates
+	| "F" // `parallel --fusion` — same task × N, pick best
+	| "B" // `run` with sub-agents — agents spawning agents
+	| "L" // `sling --long` — extended autonomy (hours)
+	| "Z"; // `sling --no-review` — zero-touch, maximum trust
 
 /** Metrics recorded per thread */
 export interface ThreadMetrics {
@@ -35,10 +35,10 @@ export interface ThreadMetrics {
 
 /** Weekly scorecard — the 4 scaling dimensions */
 export interface ThreadScorecard {
-	width: number;          // Max parallel threads (P-threads)
-	avgToolCalls: number;   // Avg tool calls before intervention (L-threads)
-	avgDepth: number;       // Avg work per prompt (B-threads)
-	trustRatio: number;     // % of threads needing no review (Z-threads)
+	width: number; // Max parallel threads (P-threads)
+	avgToolCalls: number; // Avg tool calls before intervention (L-threads)
+	avgDepth: number; // Avg work per prompt (B-threads)
+	trustRatio: number; // % of threads needing no review (Z-threads)
 	totalThreads: number;
 	weekOf: string;
 }

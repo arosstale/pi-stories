@@ -2,10 +2,10 @@
 
 import chalk from "chalk";
 import { getConfigDir } from "../config.ts";
-import { getActiveSessions, findStalledSessions, updateSession } from "../sessions/store.ts";
 import { getCostSummary } from "../costs/store.ts";
 import { sendMail } from "../mail/store.ts";
-import type { WatchdogConfig, AgentSession } from "../types.ts";
+import { findStalledSessions, getActiveSessions, updateSession } from "../sessions/store.ts";
+import type { AgentSession, WatchdogConfig } from "../types.ts";
 
 const DEFAULT_CONFIG: WatchdogConfig = {
 	interval: 30000, // 30s
@@ -42,7 +42,11 @@ export async function startWatchdog(
 					console.log(chalk.red(`  ✗ ${session.name}: stalled, max restarts reached — killing`));
 					updateSession(configDir, session.id, { status: "killed" });
 					if (session.pid) {
-						try { process.kill(session.pid, "SIGTERM"); } catch { /* */ }
+						try {
+							process.kill(session.pid, "SIGTERM");
+						} catch {
+							/* */
+						}
 					}
 					sendMail(configDir, {
 						from: "watchdog",
@@ -53,7 +57,11 @@ export async function startWatchdog(
 						priority: "high",
 					});
 				} else {
-					console.log(chalk.yellow(`  ⚠ ${session.name}: stalled (${restarts + 1}/${cfg.maxRestarts} restarts)`));
+					console.log(
+						chalk.yellow(
+							`  ⚠ ${session.name}: stalled (${restarts + 1}/${cfg.maxRestarts} restarts)`,
+						),
+					);
 					restartCounts.set(session.id, restarts + 1);
 
 					sendMail(configDir, {
@@ -70,14 +78,20 @@ export async function startWatchdog(
 			// Check cost ceiling
 			const costs = getCostSummary(configDir);
 			if (costs.today > cfg.costCeiling) {
-				console.log(chalk.red(`  💸 Cost ceiling breached: $${costs.today.toFixed(2)} > $${cfg.costCeiling}`));
+				console.log(
+					chalk.red(`  💸 Cost ceiling breached: $${costs.today.toFixed(2)} > $${cfg.costCeiling}`),
+				);
 
 				// Kill all running agents
 				const active = getActiveSessions(configDir);
 				for (const session of active) {
 					updateSession(configDir, session.id, { status: "killed" });
 					if (session.pid) {
-						try { process.kill(session.pid, "SIGTERM"); } catch { /* */ }
+						try {
+							process.kill(session.pid, "SIGTERM");
+						} catch {
+							/* */
+						}
 					}
 				}
 

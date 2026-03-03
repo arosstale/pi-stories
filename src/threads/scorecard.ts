@@ -14,7 +14,10 @@ let db: Database | null = null;
 
 /** Close the DB handle — required for tests and clean shutdown */
 export function closeThreadDb(): void {
-	if (db) { db.close(); db = null; }
+	if (db) {
+		db.close();
+		db = null;
+	}
 }
 
 function initDb(configDir: string): Database {
@@ -117,7 +120,15 @@ export function saveScorecard(configDir: string, scorecard: ThreadScorecard): vo
 			`INSERT OR REPLACE INTO scorecards (week_of, width, avg_tool_calls, avg_depth, trust_ratio, total_threads, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		)
-		.run(scorecard.weekOf, scorecard.width, scorecard.avgToolCalls, scorecard.avgDepth, scorecard.trustRatio, scorecard.totalThreads, new Date().toISOString());
+		.run(
+			scorecard.weekOf,
+			scorecard.width,
+			scorecard.avgToolCalls,
+			scorecard.avgDepth,
+			scorecard.trustRatio,
+			scorecard.totalThreads,
+			new Date().toISOString(),
+		);
 }
 
 /** Get historical scorecards for trend analysis */

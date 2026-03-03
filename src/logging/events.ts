@@ -21,7 +21,7 @@ export async function emitEvent(event: PipelineEvent): Promise<void> {
 export async function flushEvents(runDir: string): Promise<void> {
 	if (buffer.length === 0) return;
 
-	const lines = buffer.map((e) => JSON.stringify(e)).join("\n") + "\n";
+	const lines = `${buffer.map((e) => JSON.stringify(e)).join("\n")}\n`;
 	await writeFile(join(runDir, "events.jsonl"), lines);
 	buffer.length = 0;
 }

@@ -9,7 +9,10 @@ let db: Database | null = null;
 
 /** Close the DB handle — required for tests and clean shutdown */
 export function closeMailDb(): void {
-	if (db) { db.close(); db = null; }
+	if (db) {
+		db.close();
+		db = null;
+	}
 }
 
 export function initMailDb(configDir: string): Database {
@@ -36,8 +39,8 @@ export function initMailDb(configDir: string): Database {
 		)
 	`);
 
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_agent, read)`);
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)`);
+	db.exec("CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(to_agent, read)");
+	db.exec("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id)");
 
 	return db;
 }
@@ -168,7 +171,10 @@ export function replyToMail(
 	});
 }
 
-export function purgeMail(configDir: string, opts: { days?: number; agent?: string; all?: boolean }): number {
+export function purgeMail(
+	configDir: string,
+	opts: { days?: number; agent?: string; all?: boolean },
+): number {
 	const store = initMailDb(configDir);
 
 	if (opts.all) {
@@ -195,7 +201,9 @@ export function purgeMail(configDir: string, opts: { days?: number; agent?: stri
 export function getMailStats(configDir: string): { unread: number; total: number } {
 	const store = initMailDb(configDir);
 	const total = (store.prepare("SELECT COUNT(*) as c FROM messages").get() as { c: number }).c;
-	const unread = (store.prepare("SELECT COUNT(*) as c FROM messages WHERE read = 0").get() as { c: number }).c;
+	const unread = (
+		store.prepare("SELECT COUNT(*) as c FROM messages WHERE read = 0").get() as { c: number }
+	).c;
 	return { unread, total };
 }
 

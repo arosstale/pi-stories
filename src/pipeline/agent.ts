@@ -1,7 +1,7 @@
 /** [N] Non-deterministic agent dispatch */
 
-import type { CostEntry, CostTier, PipelineStep, ProjectConfig, RunState } from "../types.ts";
 import { RuntimeError } from "../errors.ts";
+import type { CostEntry, CostTier, PipelineStep, ProjectConfig, RunState } from "../types.ts";
 import { parseCostFromOutput, parseModel } from "./cost-parser.ts";
 
 export interface AgentResult {
@@ -123,13 +123,17 @@ function buildCommand(runtime: string, prompt: string, model?: string): string[]
 		case "pi":
 			return model ? ["pi", "--print", "--model", model, prompt] : ["pi", "--print", prompt];
 		case "claude":
-			return model ? ["claude", "--print", "--model", model, prompt] : ["claude", "--print", prompt];
+			return model
+				? ["claude", "--print", "--model", model, prompt]
+				: ["claude", "--print", prompt];
 		case "codex":
 			return model ? ["codex", "--quiet", "--model", model, prompt] : ["codex", "--quiet", prompt];
 		case "gemini-cli":
 			return model ? ["gemini", "--model", model, prompt] : ["gemini", prompt];
 		case "aider":
-			return model ? ["aider", "--message", prompt, "--yes", "--model", model] : ["aider", "--message", prompt, "--yes"];
+			return model
+				? ["aider", "--message", prompt, "--yes", "--model", model]
+				: ["aider", "--message", prompt, "--yes"];
 		default:
 			return [runtime, prompt];
 	}

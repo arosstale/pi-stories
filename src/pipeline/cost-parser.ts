@@ -8,15 +8,15 @@ import type { CostEntry, CostTier } from "../types.ts";
 
 /** Known cost-per-1k-token rates */
 const MODEL_PRICING: Record<string, { input: number; output: number; tier: CostTier }> = {
-	"claude-haiku-4-5":   { input: 0.001, output: 0.005, tier: 1 },
-	"claude-sonnet-4-5":  { input: 0.003, output: 0.015, tier: 2 },
-	"claude-sonnet-4":    { input: 0.003, output: 0.015, tier: 2 },
-	"claude-opus-4":      { input: 0.015, output: 0.075, tier: 3 },
-	"gpt-4o-mini":        { input: 0.00015, output: 0.0006, tier: 1 },
-	"gpt-4o":             { input: 0.005, output: 0.015, tier: 2 },
-	"gpt-4.1":            { input: 0.002, output: 0.008, tier: 2 },
-	"gemini-2.5-flash":   { input: 0.00015, output: 0.001, tier: 1 },
-	"gemini-2.5-pro":     { input: 0.00125, output: 0.01, tier: 2 },
+	"claude-haiku-4-5": { input: 0.001, output: 0.005, tier: 1 },
+	"claude-sonnet-4-5": { input: 0.003, output: 0.015, tier: 2 },
+	"claude-sonnet-4": { input: 0.003, output: 0.015, tier: 2 },
+	"claude-opus-4": { input: 0.015, output: 0.075, tier: 3 },
+	"gpt-4o-mini": { input: 0.00015, output: 0.0006, tier: 1 },
+	"gpt-4o": { input: 0.005, output: 0.015, tier: 2 },
+	"gpt-4.1": { input: 0.002, output: 0.008, tier: 2 },
+	"gemini-2.5-flash": { input: 0.00015, output: 0.001, tier: 1 },
+	"gemini-2.5-pro": { input: 0.00125, output: 0.01, tier: 2 },
 };
 
 /** Parse cost info from runtime stdout + stderr */
@@ -37,8 +37,7 @@ export function parseCostFromOutput(
 
 	// Pattern 3: Model name — require colon or equals, not just space
 	const modelMatch =
-		combined.match(/[Mm]odel:\s*(\S+)/) ??
-		combined.match(/model=["']?([a-zA-Z0-9._-]+)/);
+		combined.match(/[Mm]odel:\s*(\S+)/) ?? combined.match(/model=["']?([a-zA-Z0-9._-]+)/);
 
 	if (!costMatch && !tokenMatch) return undefined;
 
@@ -79,8 +78,6 @@ export function findPricing(model: string): (typeof MODEL_PRICING)[string] | und
 /** Parse model name from runtime output */
 export function parseModel(runtime: string, stderr: string): string | undefined {
 	// Require "Model:" with colon, or "model=" with equals — not just "model " in prose
-	const match =
-		stderr.match(/[Mm]odel:\s*(\S+)/) ??
-		stderr.match(/model=["']?([a-zA-Z0-9._-]+)/);
+	const match = stderr.match(/[Mm]odel:\s*(\S+)/) ?? stderr.match(/model=["']?([a-zA-Z0-9._-]+)/);
 	return match?.[1];
 }
