@@ -18,6 +18,10 @@ import { readEvents } from "./logging/events.ts";
 import { startWatchdog } from "./watchdog/daemon.ts";
 import { runDoctor, printDoctorResults } from "./commands/doctor.ts";
 import type { PipelineConfig, MailType, MailPriority } from "./types.ts";
+import { runThread } from "./threads/runner.ts";
+import { recordThread, calculateScorecard, saveScorecard, getHistory, getThreadBreakdown } from "./threads/scorecard.ts";
+import { CHAIN_TEMPLATES, TEAM_PRESETS } from "./threads/types.ts";
+import type { ThreadConfig, ThreadType } from "./threads/types.ts";
 
 const program = new Command();
 
@@ -938,6 +942,150 @@ program
 
 		const passed = results.filter((r) => r.status === "fulfilled" && r.value === 0).length;
 		console.log(chalk.dim(`\n  ${passed}/${n} agents succeeded`));
+	});
+
+// ═══════════════════════════════════════════════════════════
+// THREAD-BASED ENGINEERING (IndyDevDan's 7 thread types)
+// ═══════════════════════════════════════════════════════════
+
+const threadCmd = program.command("thread").description("Thread-based engineering — run any of the 7 thread types");
+
+threadCmd
+	.command("run")
+	.description("Run a thread: base, P, C, F, B, L, or Z")
+	.argument("<type>", "Thread type: base | P | C | F | B | L | Z")
+	.argument("<task>", "Task description")
+	.option("--width <n>", "Parallel agent count (P/F-threads)", "3")
+	.option("--chain <name>", "Chain template (C-threads)")
+	.option("--fusion <strategy>", "Fusion strategy (F-threads)", "best-of-n")
+	.option("--duration <min>", "Max duration in minutes (L-threads)", "60")
+	.option("--runtime <rt>", "Runtime to use", "pi")
+	.option("--budget <amount>", "Budget ceiling", "5.00")
+	.option("--roles <roles>", "Comma-separated roles", "scout,planner,builder,reviewer")
+	.action(async (type: string, task: string, opts) => {
+		const root = findProjectRoot();
+		requireInit(root);
+		const configDir = getConfigDir(root);
+
+		const validTypes = ["base", "P", "C", "F", "B", "L", "Z"];
+		if (!validTypes.includes(type)) {
+			console.log(chalk.red(`Invalid thread type: ${type}. Use: ${validTypes.join(", ")}`));
+			return;
+		}
+
+		const config: ThreadConfig = {
+			type: type as ThreadType,
+			name: `${type}-thread`,
+			task,
+			width: Number.parseInt(opts.width, 10),
+			runtimes: [opts.runtime],
+			roles: opts.roles.split(","),
+			fusionStrategy: opts.fusion,
+			maxDuration: Number.parseInt(opts.duration, 10) * 60000,
+			budget: Number.parseFloat(opts.budget),
+			requireReview: type !== "Z",
+		};
+
+		// If C-thread with template
+		if (type === "C" && opts.chain) {
+			const template = CHAIN_TEMPLATES[opts.chain];
+			if (!template) {
+				console.log(chalk.red(`Unknown chain: ${opts.chain}. Available: ${Object.keys(CHAIN_TEMPLATES).join(", ")}`));
+				return;
+			}
+			config.steps = template.steps;
+			config.name = opts.chain;
+		}
+
+		const result = await runThread(config, root);
+
+		// Record metrics
+		recordThread(configDir, result.metrics);
+
+		// Summary
+		console.log("\n" + "─".repeat(50));
+		const icon = result.status === "completed" ? chalk.green("✅") : chalk.red("❌");
+		console.log(`${icon} Thread ${result.threadId} [${type}] — ${result.status}`);
+		console.log(chalk.dim(`   Duration: ${result.metrics.duration.toFixed(1)}s | Cost: $${result.metrics.cost.toFixed(4)} | Width: ${result.metrics.width}`));
+	});
+
+threadCmd
+	.command("chains")
+	.description("List available chain templates (for C-threads)")
+	.action(() => {
+		console.log(chalk.bold("\n⛓ Chain templates\n"));
+		for (const [name, chain] of Object.entries(CHAIN_TEMPLATES)) {
+			console.log(`  ${chalk.bold(name)}: ${chain.description}`);
+			for (const [i, step] of chain.steps.entries()) {
+				console.log(chalk.dim(`    ${i + 1}. ${step.agent}: ${step.prompt.slice(0, 60)}...`));
+			}
+			console.log("");
+		}
+	});
+
+threadCmd
+	.command("teams")
+	.description("List available team presets (for P/B-threads)")
+	.action(() => {
+		console.log(chalk.bold("\n👥 Team presets\n"));
+		for (const [name, members] of Object.entries(TEAM_PRESETS)) {
+			console.log(`  ${chalk.bold(name)}: ${members.join(" → ")}`);
+		}
+	});
+
+threadCmd
+	.command("scorecard")
+	.description("Your weekly thread engineering scorecard")
+	.option("--save", "Save snapshot for historical tracking")
+	.option("--history <weeks>", "Show trend over N weeks")
+	.action(async (opts) => {
+		const root = findProjectRoot();
+		requireInit(root);
+		const configDir = getConfigDir(root);
+
+		if (opts.history) {
+			const history = getHistory(configDir, Number.parseInt(opts.history, 10));
+			if (history.length === 0) {
+				console.log(chalk.dim("No historical data yet. Use --save to snapshot."));
+				return;
+			}
+
+			console.log(chalk.bold("\n📈 Thread Scorecard History\n"));
+			console.log(`  ${"Week".padEnd(12)} ${"Width".padEnd(8)} ${"ToolCalls".padEnd(12)} ${"Depth".padEnd(8)} ${"Trust%".padEnd(8)} Threads`);
+			console.log("  " + "─".repeat(56));
+			for (const s of history) {
+				console.log(`  ${s.weekOf.padEnd(12)} ${String(s.width).padEnd(8)} ${s.avgToolCalls.toFixed(1).padEnd(12)} ${s.avgDepth.toFixed(1).padEnd(8)} ${(s.trustRatio * 100).toFixed(0).padEnd(8)} ${s.totalThreads}`);
+			}
+			return;
+		}
+
+		const scorecard = calculateScorecard(configDir);
+		const breakdown = getThreadBreakdown(configDir);
+
+		console.log(chalk.bold("\n📊 Thread Scorecard — Week of " + scorecard.weekOf + "\n"));
+		console.log(`  📏 Width (max parallel):  ${chalk.bold(String(scorecard.width))} agents`);
+		console.log(`  ⏱  Time (avg tool calls): ${chalk.bold(scorecard.avgToolCalls.toFixed(1))}`);
+		console.log(`  📐 Depth (avg B-depth):   ${chalk.bold(scorecard.avgDepth.toFixed(1))}`);
+		console.log(`  🎯 Trust (no-review %):   ${chalk.bold((scorecard.trustRatio * 100).toFixed(0) + "%")}`);
+		console.log(`  🧵 Total threads:         ${scorecard.totalThreads}`);
+
+		if (Object.keys(breakdown).length > 0) {
+			console.log(chalk.bold("\n  Thread breakdown:"));
+			const threadIcons: Record<string, string> = {
+				base: "📌", P: "⚡", C: "⛓", F: "🔀", B: "🧠", L: "⏳", Z: "🚀",
+			};
+			for (const [type, count] of Object.entries(breakdown)) {
+				const icon = threadIcons[type] ?? "·";
+				console.log(`    ${icon} ${type}-thread: ${count}`);
+			}
+		}
+
+		if (opts.save) {
+			saveScorecard(configDir, scorecard);
+			console.log(chalk.green("\n  ✓ Scorecard saved for trend tracking."));
+		}
+
+		console.log(chalk.dim("\n  Improve by: wider P-threads, longer L-threads, deeper B-threads, more Z-threads."));
 	});
 
 program

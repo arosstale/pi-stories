@@ -24,7 +24,7 @@ bun run src/index.ts init
 bun run src/index.ts run "fix the login validation bug"
 ```
 
-## 32 Commands
+## 37 Commands
 
 ### Core (v0.1)
 | Command | Description |
@@ -73,6 +73,14 @@ bun run src/index.ts run "fix the login validation bug"
 | `worktree <action>` | Manage git worktrees for parallel agents |
 | `clean` | Clean runtime state (runs, mail, sessions) |
 
+### Thread-Based Engineering (IndyDevDan)
+| Command | Description |
+|---------|-------------|
+| `thread run <type> <task>` | Run any thread: `base`, `P`, `C`, `F`, `B`, `L`, `Z` |
+| `thread chains` | List chain templates (for C-threads) |
+| `thread teams` | List team presets (for P/B-threads) |
+| `thread scorecard` | Weekly improvement metrics across 4 dimensions |
+
 ## Architecture
 
 ```
@@ -82,6 +90,7 @@ bun run src/index.ts run "fix the login validation bug"
   sessions.db          # SQLite — agent lifecycle tracking
   merge-queue.db       # SQLite — FIFO merge queue
   costs.db             # SQLite — aggregate cost history
+  threads.db           # SQLite — thread metrics + scorecards
   runs/
     {run-id}/
       status.json      # Pipeline state (resumable)
@@ -116,22 +125,58 @@ Budget ceiling enforced per-step. Watchdog enforces daily ceiling.
 3. **AI resolver** — agent analyzes the conflict
 4. **Human required** — opens for manual resolution
 
+## Thread-Based Engineering
+
+pi-stories implements IndyDevDan's 7 thread types as first-class primitives:
+
+| Thread | Pattern | When to use |
+|--------|---------|-------------|
+| **base** | `prompt → tool calls → review` | Simple tasks, quick fixes |
+| **P** | N agents running simultaneously | Independent tasks, exploration |
+| **C** | Phased with human checkpoints | Production deploys, migrations |
+| **F** | Same task × N agents → pick best | Prototyping, high-confidence |
+| **B** | Agents spawning sub-agents | Complex multi-file changes |
+| **L** | Extended autonomy (hours) | Overnight builds, backlogs |
+| **Z** | Zero-touch, no review | Maximum earned trust |
+
+```bash
+# Run a fusion thread — 5 agents tackle the same problem
+pi-stories thread run F "optimize the database queries" --width 5
+
+# Run a chain — plan → build → review
+pi-stories thread run C "add user authentication" --chain plan-build-review
+
+# Check your weekly improvement
+pi-stories thread scorecard --save
+```
+
+**The Four Scaling Dimensions** (track weekly via `thread scorecard`):
+1. **Width** — More parallel threads (P-threads)
+2. **Time** — Longer autonomous runs (L-threads)
+3. **Depth** — Agents managing agents (B-threads)
+4. **Attention** — Fewer checkpoints needed (Z-threads)
+
+5 chain templates from [disler/pi-vs-claude-code](https://github.com/disler/pi-vs-claude-code): `plan-build-review`, `plan-build`, `scout-flow`, `plan-review-plan`, `full-pipeline`.
+
 ## Compared to Overstory
 
 | Feature | Overstory | pi-stories |
 |---------|-----------|------------|
-| Commands | 32 | **32** |
+| Commands | 32 | **37** |
 | Core pattern | Sequential pipeline | **[D]/[N] interleaving** |
+| Thread types | None | **7 types** (base, P, C, F, B, L, Z) |
 | Cost routing | None | **3-tier auto-escalation** |
 | Budget control | After the fact | **Per-run + daily ceiling** |
 | Retry strategy | Manual | **Auto-retry with escalation** |
-| Databases | 4 SQLite | **4 SQLite** (mail, sessions, merge, costs) |
+| Databases | 4 SQLite | **5 SQLite** (mail, sessions, merge, costs, threads) |
 | Gate detection | Manual | **Auto-detect** |
 | Runtimes | 4 | **18** |
 | Conflict resolution | None | **4-tier merge** |
 | Watchdog | Basic | **Stall detection + cost ceiling + auto-kill** |
-| Parallel agents | Yes | **Yes + git worktrees** |
+| Parallel agents | Yes | **Yes + git worktrees + F-threads** |
 | Health check | 11 categories | **11 categories** |
+| Improvement tracking | None | **Weekly scorecard** (4 dimensions) |
+| Chain templates | None | **5 templates** (from disler/pi-vs-claude-code) |
 
 ## Tech Stack
 
