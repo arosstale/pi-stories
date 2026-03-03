@@ -18,10 +18,9 @@ import { readEvents } from "./logging/events.ts";
 import { startWatchdog } from "./watchdog/daemon.ts";
 import { runDoctor, printDoctorResults } from "./commands/doctor.ts";
 import type { PipelineConfig, MailType, MailPriority } from "./types.ts";
-import { runThread } from "./threads/runner.ts";
 import { recordThread, calculateScorecard, saveScorecard, getHistory, getThreadBreakdown } from "./threads/scorecard.ts";
-import { CHAIN_TEMPLATES, TEAM_PRESETS } from "./threads/types.ts";
-import type { ThreadConfig, ThreadType } from "./threads/types.ts";
+import { classifyThread } from "./threads/types.ts";
+import type { ThreadMetrics } from "./threads/types.ts";
 
 const program = new Command();
 
@@ -98,6 +97,27 @@ program
 				console.log(`  ${icon} ${kind} ${step.name}${cost}`);
 			},
 		});
+
+		// Record as C-thread (chained [D]/[N] pipeline)
+		if (result.status !== "skipped") {
+			try {
+				const threadType = classifyThread("run", {});
+				const duration = result.completedAt
+					? (new Date(result.completedAt).getTime() - new Date(result.startedAt).getTime()) / 1000
+					: 0;
+				recordThread(getConfigDir(root), {
+					threadId: result.id,
+					type: threadType,
+					toolCalls: result.steps.length,
+					duration,
+					checkpoints: result.steps.filter((s) => s.stepId.startsWith("validate")).length,
+					cost: result.totalCost,
+					width: 1,
+					depth: 0,
+					reviewed: !opts.skipReview,
+				});
+			} catch { /* scorecard db may not exist yet */ }
+		}
 
 		console.log("\n" + "─".repeat(50));
 		const statusMsg = result.status === "passed" ? chalk.green.bold("✅ Completed")
@@ -410,6 +430,23 @@ program
 		updateSession(configDir, session.id, {
 			status: exitCode === 0 ? "completed" : "failed",
 		});
+
+		// Record as base/L/Z thread
+		try {
+			const startTime = new Date(session.startedAt).getTime();
+			const duration = (Date.now() - startTime) / 1000;
+			recordThread(configDir, {
+				threadId: session.id,
+				type: classifyThread("sling", opts),
+				toolCalls: 0, // TODO: parse from runtime output
+				duration,
+				checkpoints: 0,
+				cost: 0,
+				width: 1,
+				depth: Number.parseInt(opts.depth, 10),
+				reviewed: true,
+			});
+		} catch { /* */ }
 
 		console.log(`\n  ${exitCode === 0 ? "✅" : "❌"} Agent ${name} ${exitCode === 0 ? "completed" : "failed"}`);
 		if (output.trim()) {
@@ -941,101 +978,36 @@ program
 		);
 
 		const passed = results.filter((r) => r.status === "fulfilled" && r.value === 0).length;
+
+		// Record as P-thread (or F-thread if --fusion)
+		try {
+			const configDir = getConfigDir(root);
+			const duration = (Date.now() - Date.now()) / 1000; // TODO: proper timing
+			recordThread(configDir, {
+				threadId: `par-${Date.now().toString(36)}`,
+				type: classifyThread("parallel", opts),
+				toolCalls: 0,
+				duration: 0,
+				checkpoints: 0,
+				cost: 0,
+				width: n,
+				depth: 0,
+				reviewed: true,
+			});
+		} catch { /* */ }
+
 		console.log(chalk.dim(`\n  ${passed}/${n} agents succeeded`));
 	});
 
 // ═══════════════════════════════════════════════════════════
-// THREAD-BASED ENGINEERING (IndyDevDan's 7 thread types)
+// THREAD SCORECARD (measurement, not abstraction)
+// Every run/sling/parallel auto-records its thread type.
+// This command shows your weekly improvement.
 // ═══════════════════════════════════════════════════════════
 
-const threadCmd = program.command("thread").description("Thread-based engineering — run any of the 7 thread types");
-
-threadCmd
-	.command("run")
-	.description("Run a thread: base, P, C, F, B, L, or Z")
-	.argument("<type>", "Thread type: base | P | C | F | B | L | Z")
-	.argument("<task>", "Task description")
-	.option("--width <n>", "Parallel agent count (P/F-threads)", "3")
-	.option("--chain <name>", "Chain template (C-threads)")
-	.option("--fusion <strategy>", "Fusion strategy (F-threads)", "best-of-n")
-	.option("--duration <min>", "Max duration in minutes (L-threads)", "60")
-	.option("--runtime <rt>", "Runtime to use", "pi")
-	.option("--budget <amount>", "Budget ceiling", "5.00")
-	.option("--roles <roles>", "Comma-separated roles", "scout,planner,builder,reviewer")
-	.action(async (type: string, task: string, opts) => {
-		const root = findProjectRoot();
-		requireInit(root);
-		const configDir = getConfigDir(root);
-
-		const validTypes = ["base", "P", "C", "F", "B", "L", "Z"];
-		if (!validTypes.includes(type)) {
-			console.log(chalk.red(`Invalid thread type: ${type}. Use: ${validTypes.join(", ")}`));
-			return;
-		}
-
-		const config: ThreadConfig = {
-			type: type as ThreadType,
-			name: `${type}-thread`,
-			task,
-			width: Number.parseInt(opts.width, 10),
-			runtimes: [opts.runtime],
-			roles: opts.roles.split(","),
-			fusionStrategy: opts.fusion,
-			maxDuration: Number.parseInt(opts.duration, 10) * 60000,
-			budget: Number.parseFloat(opts.budget),
-			requireReview: type !== "Z",
-		};
-
-		// If C-thread with template
-		if (type === "C" && opts.chain) {
-			const template = CHAIN_TEMPLATES[opts.chain];
-			if (!template) {
-				console.log(chalk.red(`Unknown chain: ${opts.chain}. Available: ${Object.keys(CHAIN_TEMPLATES).join(", ")}`));
-				return;
-			}
-			config.steps = template.steps;
-			config.name = opts.chain;
-		}
-
-		const result = await runThread(config, root);
-
-		// Record metrics
-		recordThread(configDir, result.metrics);
-
-		// Summary
-		console.log("\n" + "─".repeat(50));
-		const icon = result.status === "completed" ? chalk.green("✅") : chalk.red("❌");
-		console.log(`${icon} Thread ${result.threadId} [${type}] — ${result.status}`);
-		console.log(chalk.dim(`   Duration: ${result.metrics.duration.toFixed(1)}s | Cost: $${result.metrics.cost.toFixed(4)} | Width: ${result.metrics.width}`));
-	});
-
-threadCmd
-	.command("chains")
-	.description("List available chain templates (for C-threads)")
-	.action(() => {
-		console.log(chalk.bold("\n⛓ Chain templates\n"));
-		for (const [name, chain] of Object.entries(CHAIN_TEMPLATES)) {
-			console.log(`  ${chalk.bold(name)}: ${chain.description}`);
-			for (const [i, step] of chain.steps.entries()) {
-				console.log(chalk.dim(`    ${i + 1}. ${step.agent}: ${step.prompt.slice(0, 60)}...`));
-			}
-			console.log("");
-		}
-	});
-
-threadCmd
-	.command("teams")
-	.description("List available team presets (for P/B-threads)")
-	.action(() => {
-		console.log(chalk.bold("\n👥 Team presets\n"));
-		for (const [name, members] of Object.entries(TEAM_PRESETS)) {
-			console.log(`  ${chalk.bold(name)}: ${members.join(" → ")}`);
-		}
-	});
-
-threadCmd
+program
 	.command("scorecard")
-	.description("Your weekly thread engineering scorecard")
+	.description("Weekly thread engineering scorecard — 4 scaling dimensions")
 	.option("--save", "Save snapshot for historical tracking")
 	.option("--history <weeks>", "Show trend over N weeks")
 	.action(async (opts) => {
@@ -1085,7 +1057,7 @@ threadCmd
 			console.log(chalk.green("\n  ✓ Scorecard saved for trend tracking."));
 		}
 
-		console.log(chalk.dim("\n  Improve by: wider P-threads, longer L-threads, deeper B-threads, more Z-threads."));
+		console.log(chalk.dim("\n  Thread types: base (sling), P (parallel), C (run), F (parallel --fusion), B (run with sub-agents), L (sling --long), Z (sling --no-review)"));
 	});
 
 program

@@ -1,17 +1,14 @@
-/** Thread Scorecard — track your 4 scaling dimensions weekly
+/** Thread Scorecard — track the 4 scaling dimensions weekly
  *
- * "Improving at any of these four dimensions means you're improving
- *  as an agentic engineer. That's the metric." — IndyDevDan
- *
- * Width:     More threads (P-threads)
- * Time:      Longer threads (L-threads, avg tool calls)
- * Depth:     Thicker threads (B-threads, work per prompt)
- * Attention: Fewer checkpoints (Z-threads, trust ratio)
+ * Width:     More parallel threads (P-threads)
+ * Time:      Longer autonomous runs (L-threads, avg tool calls)
+ * Depth:     Agents managing agents (B-threads, work per prompt)
+ * Attention: Fewer checkpoints needed (Z-threads, trust ratio)
  */
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { ThreadMetrics, ThreadScorecard } from "./types.ts";
+import type { ThreadMetrics, ThreadScorecard, ThreadType } from "./types.ts";
 
 let db: Database | null = null;
 
@@ -52,7 +49,7 @@ function initDb(configDir: string): Database {
 	return db;
 }
 
-/** Record a completed thread */
+/** Record a completed thread — called automatically by run/sling/parallel */
 export function recordThread(configDir: string, metrics: ThreadMetrics): void {
 	const store = initDb(configDir);
 	store
@@ -74,17 +71,21 @@ export function recordThread(configDir: string, metrics: ThreadMetrics): void {
 		);
 }
 
+/** Get the start of the current week (Monday 00:00) */
+function weekStart(): Date {
+	const now = new Date();
+	const day = now.getDay();
+	const offset = day === 0 ? 6 : day - 1;
+	const monday = new Date(now);
+	monday.setDate(now.getDate() - offset);
+	monday.setHours(0, 0, 0, 0);
+	return monday;
+}
+
 /** Calculate scorecard for the current week */
 export function calculateScorecard(configDir: string): ThreadScorecard {
 	const store = initDb(configDir);
-
-	// Current week: Monday 00:00 to now
-	const now = new Date();
-	const dayOfWeek = now.getDay();
-	const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-	const monday = new Date(now);
-	monday.setDate(now.getDate() - mondayOffset);
-	monday.setHours(0, 0, 0, 0);
+	const monday = weekStart();
 	const weekOf = monday.toISOString().slice(0, 10);
 
 	const rows = store
@@ -92,42 +93,18 @@ export function calculateScorecard(configDir: string): ThreadScorecard {
 		.all(monday.toISOString()) as Array<Record<string, unknown>>;
 
 	if (rows.length === 0) {
-		return {
-			width: 0,
-			avgToolCalls: 0,
-			avgDepth: 0,
-			trustRatio: 0,
-			totalThreads: 0,
-			weekOf,
-		};
+		return { width: 0, avgToolCalls: 0, avgDepth: 0, trustRatio: 0, totalThreads: 0, weekOf };
 	}
 
-	// Width: max concurrent threads (proxy: max width value)
 	const maxWidth = Math.max(...rows.map((r) => r.width as number));
+	const avgToolCalls = rows.reduce((s, r) => s + (r.tool_calls as number), 0) / rows.length;
+	const avgDepth = rows.reduce((s, r) => s + (r.depth as number), 0) / rows.length;
+	const trustRatio = rows.filter((r) => (r.reviewed as number) === 0).length / rows.length;
 
-	// Time: average tool calls before intervention
-	const totalToolCalls = rows.reduce((sum, r) => sum + (r.tool_calls as number), 0);
-	const avgToolCalls = totalToolCalls / rows.length;
-
-	// Depth: average depth (B-threads contribute)
-	const totalDepth = rows.reduce((sum, r) => sum + (r.depth as number), 0);
-	const avgDepth = totalDepth / rows.length;
-
-	// Attention: % of threads that needed no review (Z-threads)
-	const unreviewedCount = rows.filter((r) => (r.reviewed as number) === 0).length;
-	const trustRatio = unreviewedCount / rows.length;
-
-	return {
-		width: maxWidth,
-		avgToolCalls,
-		avgDepth,
-		trustRatio,
-		totalThreads: rows.length,
-		weekOf,
-	};
+	return { width: maxWidth, avgToolCalls, avgDepth, trustRatio, totalThreads: rows.length, weekOf };
 }
 
-/** Save scorecard snapshot */
+/** Save scorecard snapshot for historical tracking */
 export function saveScorecard(configDir: string, scorecard: ThreadScorecard): void {
 	const store = initDb(configDir);
 	store
@@ -135,25 +112,15 @@ export function saveScorecard(configDir: string, scorecard: ThreadScorecard): vo
 			`INSERT OR REPLACE INTO scorecards (week_of, width, avg_tool_calls, avg_depth, trust_ratio, total_threads, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		)
-		.run(
-			scorecard.weekOf,
-			scorecard.width,
-			scorecard.avgToolCalls,
-			scorecard.avgDepth,
-			scorecard.trustRatio,
-			scorecard.totalThreads,
-			new Date().toISOString(),
-		);
+		.run(scorecard.weekOf, scorecard.width, scorecard.avgToolCalls, scorecard.avgDepth, scorecard.trustRatio, scorecard.totalThreads, new Date().toISOString());
 }
 
 /** Get historical scorecards for trend analysis */
 export function getHistory(configDir: string, weeks?: number): ThreadScorecard[] {
 	const store = initDb(configDir);
-	const limit = weeks ?? 12;
-
 	const rows = store
 		.prepare("SELECT * FROM scorecards ORDER BY week_of DESC LIMIT ?")
-		.all(limit) as Array<Record<string, unknown>>;
+		.all(weeks ?? 12) as Array<Record<string, unknown>>;
 
 	return rows.map((r) => ({
 		width: r.width as number,
@@ -165,24 +132,16 @@ export function getHistory(configDir: string, weeks?: number): ThreadScorecard[]
 	}));
 }
 
-/** Get thread type breakdown for current week */
+/** Thread type breakdown for current week */
 export function getThreadBreakdown(configDir: string): Record<string, number> {
 	const store = initDb(configDir);
-
-	const now = new Date();
-	const dayOfWeek = now.getDay();
-	const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-	const monday = new Date(now);
-	monday.setDate(now.getDate() - mondayOffset);
-	monday.setHours(0, 0, 0, 0);
+	const monday = weekStart();
 
 	const rows = store
 		.prepare("SELECT type, COUNT(*) as count FROM thread_runs WHERE created_at >= ? GROUP BY type")
 		.all(monday.toISOString()) as Array<{ type: string; count: number }>;
 
 	const breakdown: Record<string, number> = {};
-	for (const row of rows) {
-		breakdown[row.type] = row.count;
-	}
+	for (const row of rows) breakdown[row.type] = row.count;
 	return breakdown;
 }
