@@ -7,6 +7,11 @@ import type { MailMessage, MailPriority, MailType } from "../types.ts";
 
 let db: Database | null = null;
 
+/** Close the DB handle — required for tests and clean shutdown */
+export function closeMailDb(): void {
+	if (db) { db.close(); db = null; }
+}
+
 export function initMailDb(configDir: string): Database {
 	if (db) return db;
 

@@ -7,6 +7,11 @@ import type { AgentSession, AgentSessionStatus, AgentRole } from "../types.ts";
 
 let db: Database | null = null;
 
+/** Close the DB handle — required for tests and clean shutdown */
+export function closeSessionDb(): void {
+	if (db) { db.close(); db = null; }
+}
+
 export function initSessionDb(configDir: string): Database {
 	if (db) return db;
 

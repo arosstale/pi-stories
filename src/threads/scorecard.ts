@@ -12,6 +12,11 @@ import type { ThreadMetrics, ThreadScorecard, ThreadType } from "./types.ts";
 
 let db: Database | null = null;
 
+/** Close the DB handle — required for tests and clean shutdown */
+export function closeThreadDb(): void {
+	if (db) { db.close(); db = null; }
+}
+
 function initDb(configDir: string): Database {
 	if (db) return db;
 
