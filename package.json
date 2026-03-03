@@ -1,0 +1,30 @@
+{
+  "name": "pi-stories",
+  "version": "0.1.0",
+  "description": "Multi-agent orchestration with Blueprint Engine [D]/[N] interleaving and cost routing",
+  "type": "module",
+  "bin": {
+    "pi-stories": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arosstale/pi-stories.git"
+  }
+}

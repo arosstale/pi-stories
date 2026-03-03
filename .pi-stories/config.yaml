@@ -1,0 +1,30 @@
+# pi-stories configuration
+# Blueprint Engine [D]/[N] + cost routing
+
+# Default runtime per agent role
+runtimes:
+  scout: pi
+  planner: pi
+  builder: pi
+  reviewer: pi
+  architect: pi
+
+# Model per cost tier
+models:
+  1: claude-haiku-4-5
+  2: claude-sonnet-4-5
+  3: claude-opus-4-5
+
+budget: 5
+maxRetries: 3
+
+# [D] gate commands (auto-detected if empty)
+gates:
+  lint: 
+  format: 
+  typecheck: 
+  test: 
+
+git:
+  baseBranch: main
+  autoPr: true
