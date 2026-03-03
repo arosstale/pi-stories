@@ -26,5 +26,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/arosstale/pi-stories.git"
-  }
+  },
+  "keywords": [
+    "pi-package"
+  ]
 }
