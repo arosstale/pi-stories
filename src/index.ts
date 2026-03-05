@@ -47,7 +47,7 @@ import {
 } from "./threads/scorecard.ts";
 import { classifyThread } from "./threads/types.ts";
 import type { ThreadMetrics } from "./threads/types.ts";
-import type { MailPriority, MailType, PipelineConfig } from "./types.ts";
+import type { AgentRole, MailPriority, MailType, PipelineConfig } from "./types.ts";
 import { startWatchdog } from "./watchdog/daemon.ts";
 
 const program = new Command();
@@ -55,7 +55,7 @@ const program = new Command();
 program
 	.name("pi-stories")
 	.description("Multi-agent orchestration with Blueprint Engine [D]/[N] and cost routing")
-	.version("0.4.0");
+	.version("0.4.1");
 
 // ═══════════════════════════════════════════════════════════
 // v0.1 — CORE
@@ -905,7 +905,7 @@ program
 				...status,
 				events,
 				exportedAt: new Date().toISOString(),
-				version: "0.4.0",
+				version: "0.4.1",
 			};
 
 			if (opts.format === "json") {
@@ -1138,7 +1138,7 @@ program
 			const session = createSession(configDir, {
 				name,
 				runtime: opts.runtime,
-				role: role as any,
+				role: role as AgentRole,
 				task: agentTask,
 				depth: 0,
 			});
@@ -1295,7 +1295,7 @@ program
 	.command("version")
 	.description("Show version and build info")
 	.action(() => {
-		console.log(chalk.bold("pi-stories v0.4.0"));
+		console.log(chalk.bold("pi-stories v0.4.1"));
 		console.log(chalk.dim(`Bun ${Bun.version} | ${process.platform} | ${process.arch}`));
 		console.log(chalk.dim(`Node compat: ${process.version}`));
 	});
