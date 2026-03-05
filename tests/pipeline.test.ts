@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGates, runGate } from "../src/pipeline/gates.ts";
-import { buildDefaultPipeline } from "../src/pipeline/steps.ts";
+import { buildDefaultPipeline, buildQuickPipeline } from "../src/pipeline/steps.ts";
 import { classifyThread } from "../src/threads/types.ts";
 import type { PipelineStep, ProjectConfig } from "../src/types.ts";
 
@@ -125,6 +125,42 @@ describe("buildDefaultPipeline", () => {
 	});
 });
 
+// ── Quick Pipeline ────────────────────────────────────
+
+describe("buildQuickPipeline", () => {
+	test("produces minimal steps: context, build, gates, commit", () => {
+		const config: ProjectConfig = {
+			name: "test",
+			runtimes: { default: "pi" },
+			gates: { lint: "eslint .", test: "jest" },
+			budget: { daily: 5 },
+		};
+
+		const steps = buildQuickPipeline(config);
+		const ids = steps.map((s) => s.id);
+		expect(ids).toContain("context");
+		expect(ids).toContain("build");
+		expect(ids).toContain("quality-gates");
+		expect(ids).toContain("commit");
+		// No scout, plan, or review
+		expect(ids).not.toContain("scout");
+		expect(ids).not.toContain("plan");
+		expect(ids).not.toContain("review");
+	});
+
+	test("skips gates when none configured", () => {
+		const config: ProjectConfig = {
+			name: "test",
+			runtimes: { default: "pi" },
+			gates: {},
+			budget: { daily: 5 },
+		};
+
+		const steps = buildQuickPipeline(config);
+		expect(steps.find((s) => s.id === "quality-gates")).toBeUndefined();
+	});
+});
+
 // ── Gates ─────────────────────────────────────────────
 
 describe("runGate", () => {
@@ -194,6 +230,132 @@ describe("runGate", () => {
 			expect(true).toBe(false);
 		} catch (err) {
 			expect((err as Error).message).not.toContain("should-not-run");
+		}
+	});
+});
+
+// ── Validation Gates ──────────────────────────────────
+
+describe("runGate (validation)", () => {
+	test("validates a passed step with sufficient output", async () => {
+		const step: PipelineStep = {
+			id: "validate-scout",
+			kind: "D",
+			name: "Validate scout",
+			validate: "scout",
+		};
+		const state = {
+			id: "test",
+			task: "test",
+			startedAt: new Date().toISOString(),
+			status: "running" as const,
+			steps: [{ stepId: "scout", status: "passed" as const, startedAt: "", output: "Found 5 files in src/: main.ts, utils.ts, config.ts, types.ts, index.ts. Key patterns identified." }],
+			totalCost: 0,
+			totalTokens: 0,
+		};
+
+		const output = await runGate(step, process.cwd(), state);
+		expect(output).toContain("Validated");
+		expect(output).toContain("scout");
+	});
+
+	test("rejects step with empty output", async () => {
+		const step: PipelineStep = {
+			id: "validate-scout",
+			kind: "D",
+			name: "Validate scout",
+			validate: "scout",
+		};
+		const state = {
+			id: "test",
+			task: "test",
+			startedAt: new Date().toISOString(),
+			status: "running" as const,
+			steps: [{ stepId: "scout", status: "passed" as const, startedAt: "", output: "" }],
+			totalCost: 0,
+			totalTokens: 0,
+		};
+
+		try {
+			await runGate(step, process.cwd(), state);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect((err as Error).message).toContain("empty output");
+		}
+	});
+
+	test("rejects step with too-short output", async () => {
+		const step: PipelineStep = {
+			id: "validate-build",
+			kind: "D",
+			name: "Validate build",
+			validate: "build",
+		};
+		const state = {
+			id: "test",
+			task: "test",
+			startedAt: new Date().toISOString(),
+			status: "running" as const,
+			steps: [{ stepId: "build", status: "passed" as const, startedAt: "", output: "ok done" }],
+			totalCost: 0,
+			totalTokens: 0,
+		};
+
+		try {
+			await runGate(step, process.cwd(), state);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect((err as Error).message).toContain("too short");
+		}
+	});
+
+	test("rejects when target step not found", async () => {
+		const step: PipelineStep = {
+			id: "validate-ghost",
+			kind: "D",
+			name: "Validate ghost",
+			validate: "nonexistent",
+		};
+		const state = {
+			id: "test",
+			task: "test",
+			startedAt: new Date().toISOString(),
+			status: "running" as const,
+			steps: [],
+			totalCost: 0,
+			totalTokens: 0,
+		};
+
+		try {
+			await runGate(step, process.cwd(), state);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect((err as Error).message).toContain("not found");
+		}
+	});
+
+	test("rejects failed review step", async () => {
+		const step: PipelineStep = {
+			id: "validate-review",
+			kind: "D",
+			name: "Validate review",
+			validate: "review",
+		};
+		const state = {
+			id: "test",
+			task: "test",
+			startedAt: new Date().toISOString(),
+			status: "running" as const,
+			steps: [{ stepId: "review", status: "passed" as const, startedAt: "", output: "FAIL: Found 3 bugs in the implementation that need fixing before merge." }],
+			totalCost: 0,
+			totalTokens: 0,
+		};
+
+		try {
+			await runGate(step, process.cwd(), state);
+			expect(true).toBe(false);
+		} catch (err) {
+			expect((err as Error).message).toContain("FAIL");
 		}
 	});
 });

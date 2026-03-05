@@ -28,7 +28,7 @@ import {
 } from "./merge/queue.ts";
 import { runPipeline } from "./pipeline/engine.ts";
 import { detectGates } from "./pipeline/gates.ts";
-import { buildDefaultPipeline } from "./pipeline/steps.ts";
+import { buildDefaultPipeline, buildQuickPipeline } from "./pipeline/steps.ts";
 import { discoverRuntimes, listRuntimes } from "./runtimes/registry.ts";
 import {
 	createSession,
@@ -94,6 +94,7 @@ program
 	.option("--dry-run", "Show plan only")
 	.option("--retry <n>", "Max retries per [N] step", "3")
 	.option("--skip-review", "Skip review phase")
+	.option("--quick", "Minimal pipeline: build + gates + commit (skip scout/plan/review)")
 	.action(async (task: string, opts) => {
 		const root = findProjectRoot();
 		requireInit(root);
@@ -104,9 +105,13 @@ program
 
 		console.log(chalk.bold("\n🎬 pi-stories run"));
 		console.log(chalk.dim(`   Task: "${task}"`));
-		console.log(chalk.dim(`   Budget: $${budget.toFixed(2)} | Retries: ${maxRetries}\n`));
+		console.log(chalk.dim(`   Budget: $${budget.toFixed(2)} | Retries: ${maxRetries}`));
+		if (opts.quick) console.log(chalk.dim("   Mode: quick (build + gates + commit)"));
+		console.log("");
 
-		const steps = buildDefaultPipeline(config);
+		const steps = opts.quick
+			? buildQuickPipeline(config)
+			: buildDefaultPipeline(config);
 		const pipelineConfig: PipelineConfig = {
 			steps: opts.skipReview ? steps.filter((s) => s.role !== "reviewer") : steps,
 			maxRetries,

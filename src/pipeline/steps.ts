@@ -6,7 +6,7 @@ import type { PipelineStep, ProjectConfig } from "../types.ts";
 export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 	const steps: PipelineStep[] = [];
 
-	// [D] Pre-compute context
+	// ── [D] Pre-compute context ────────────────────────────────
 	steps.push({
 		id: "context",
 		kind: "D",
@@ -14,10 +14,12 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		commands: [
 			"git diff --name-only HEAD~1..HEAD 2>/dev/null || git diff --name-only --cached || echo 'clean'",
 			"git log --oneline -5",
+			// Capture file tree for the scout
+			"find . -name '*.ts' -o -name '*.tsx' -o -name '*.py' -o -name '*.go' -o -name '*.rs' | head -100",
 		],
 	});
 
-	// [N] Scout
+	// ── [N] Scout ──────────────────────────────────────────────
 	steps.push({
 		id: "scout",
 		kind: "N",
@@ -26,15 +28,15 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		tier: 1,
 	});
 
-	// [D] Validate scout output
+	// ── [D] Validate scout output ──────────────────────────────
 	steps.push({
 		id: "validate-scout",
 		kind: "D",
 		name: "Validate scout output",
-		commands: ['echo "Scout output validated"'],
+		validate: "scout",
 	});
 
-	// [N] Plan
+	// ── [N] Plan ───────────────────────────────────────────────
 	steps.push({
 		id: "plan",
 		kind: "N",
@@ -43,15 +45,15 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		tier: 2,
 	});
 
-	// [D] Validate plan
+	// ── [D] Validate plan ──────────────────────────────────────
 	steps.push({
 		id: "validate-plan",
 		kind: "D",
 		name: "Validate plan",
-		commands: ['echo "Plan validated"'],
+		validate: "plan",
 	});
 
-	// [N] Build
+	// ── [N] Build ──────────────────────────────────────────────
 	steps.push({
 		id: "build",
 		kind: "N",
@@ -60,7 +62,7 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		tier: 2,
 	});
 
-	// [D] Quality gates
+	// ── [D] Quality gates ──────────────────────────────────────
 	const gateCommands: string[] = [];
 	if (config.gates.lint) gateCommands.push(config.gates.lint);
 	if (config.gates.format) gateCommands.push(config.gates.format);
@@ -75,16 +77,7 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		});
 	}
 
-	// [N] Review
-	steps.push({
-		id: "review",
-		kind: "N",
-		name: "Review — check the diff",
-		role: "reviewer",
-		tier: 3,
-	});
-
-	// [D] Test suite
+	// ── [D] Test suite ─────────────────────────────────────────
 	if (config.gates.test) {
 		steps.push({
 			id: "test",
@@ -94,13 +87,66 @@ export function buildDefaultPipeline(config: ProjectConfig): PipelineStep[] {
 		});
 	}
 
-	// [D] Commit
+	// ── [N] Review ─────────────────────────────────────────────
+	steps.push({
+		id: "review",
+		kind: "N",
+		name: "Review — check the diff",
+		role: "reviewer",
+		tier: 3,
+	});
+
+	// ── [D] Commit ─────────────────────────────────────────────
 	steps.push({
 		id: "commit",
 		kind: "D",
 		name: "Commit changes",
 		commands: [
 			'git add -A && git diff --cached --quiet && echo "Nothing to commit" || git commit -m "feat: agent-implemented changes"',
+		],
+	});
+
+	return steps;
+}
+
+/** Build a minimal pipeline — just scout + build, no review */
+export function buildQuickPipeline(config: ProjectConfig): PipelineStep[] {
+	const steps: PipelineStep[] = [];
+
+	steps.push({
+		id: "context",
+		kind: "D",
+		name: "Pre-compute context",
+		commands: ["git diff --name-only HEAD~1..HEAD 2>/dev/null || echo 'clean'"],
+	});
+
+	steps.push({
+		id: "build",
+		kind: "N",
+		name: "Build — implement directly",
+		role: "builder",
+		tier: 2,
+	});
+
+	const gateCommands: string[] = [];
+	if (config.gates.lint) gateCommands.push(config.gates.lint);
+	if (config.gates.test) gateCommands.push(config.gates.test);
+
+	if (gateCommands.length > 0) {
+		steps.push({
+			id: "quality-gates",
+			kind: "D",
+			name: "Quality gates",
+			commands: gateCommands,
+		});
+	}
+
+	steps.push({
+		id: "commit",
+		kind: "D",
+		name: "Commit changes",
+		commands: [
+			'git add -A && git diff --cached --quiet && echo "Nothing to commit" || git commit -m "fix: quick agent fix"',
 		],
 	});
 

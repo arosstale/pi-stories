@@ -1,10 +1,17 @@
-/** [D] Deterministic gates — lint, test, typecheck, format */
+/** [D] Deterministic gates — lint, test, typecheck, format, validation */
 
 import { GateError } from "../errors.ts";
-import type { PipelineStep } from "../types.ts";
+import type { PipelineStep, RunState } from "../types.ts";
+
+const IS_WIN = process.platform === "win32";
 
 /** Run a deterministic gate step */
-export async function runGate(step: PipelineStep, cwd: string): Promise<string> {
+export async function runGate(step: PipelineStep, cwd: string, state?: RunState): Promise<string> {
+	// Validation gates check previous step output instead of running commands
+	if (step.validate) {
+		return runValidation(step, state);
+	}
+
 	if (!step.commands || step.commands.length === 0) {
 		return `[${step.name}] No commands configured — skipped`;
 	}
@@ -23,9 +30,63 @@ export async function runGate(step: PipelineStep, cwd: string): Promise<string> 
 	return outputs.join("\n");
 }
 
+/** Validate output from a previous step — check it's non-empty and meets criteria */
+function runValidation(step: PipelineStep, state?: RunState): string {
+	const targetId = step.validate!;
+	if (!state) {
+		throw new GateError(step.name, 1, "No pipeline state available for validation");
+	}
+
+	const targetStep = state.steps.find((s) => s.stepId === targetId);
+	if (!targetStep) {
+		throw new GateError(step.name, 1, `Target step "${targetId}" not found in pipeline state`);
+	}
+
+	if (targetStep.status !== "passed") {
+		throw new GateError(step.name, 1, `Target step "${targetId}" did not pass (status: ${targetStep.status})`);
+	}
+
+	const output = targetStep.output ?? "";
+
+	// Check non-empty output
+	if (output.trim().length === 0) {
+		throw new GateError(step.name, 1, `Step "${targetId}" produced empty output`);
+	}
+
+	// Check minimum length (agents that just echo back the prompt are useless)
+	if (output.trim().length < 50) {
+		throw new GateError(step.name, 1, `Step "${targetId}" output too short (${output.trim().length} chars) — likely not a real response`);
+	}
+
+	// Check for error patterns in output
+	const errorPatterns = [
+		/^error:/im,
+		/^fatal:/im,
+		/unhandled.*exception/i,
+		/stack.*trace/i,
+	];
+	for (const pattern of errorPatterns) {
+		if (pattern.test(output)) {
+			throw new GateError(step.name, 1, `Step "${targetId}" output contains error pattern: ${pattern.source}`);
+		}
+	}
+
+	// For review steps, check for explicit PASS/FAIL
+	if (targetId.includes("review")) {
+		if (/\bFAIL\b/i.test(output) && !/\bPASS\b/i.test(output)) {
+			throw new GateError(step.name, 1, `Review step "${targetId}" returned FAIL`);
+		}
+	}
+
+	return `[${step.name}] Validated "${targetId}" — ${output.trim().length} chars, no errors`;
+}
+
 /** Run a shell command and capture output */
 async function runCommand(cmd: string, cwd: string): Promise<{ exitCode: number; output: string }> {
-	const proc = Bun.spawn(["bash", "-c", cmd], {
+	// Use bash on Unix, cmd /c on Windows (Git Bash handles bash fine)
+	const shellCmd = IS_WIN ? ["bash", "-c", cmd] : ["bash", "-c", cmd];
+
+	const proc = Bun.spawn(shellCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -62,29 +123,34 @@ export async function detectGates(cwd: string): Promise<Record<string, string | 
 		if (scripts.check) gates.typecheck = `${pm} run check`;
 		if (scripts.test) gates.test = `${pm} test`;
 	} catch {
-		// No package.json — try other patterns
+		// No package.json
 	}
 
-	// Python projects
+	// Python
 	try {
 		if (await Bun.file(`${cwd}/pyproject.toml`).exists()) {
 			gates.lint = "ruff check .";
 			gates.format = "ruff format --check .";
 			gates.test = "pytest";
 		}
-	} catch {
-		// ignore
-	}
+	} catch { /* */ }
 
-	// Go projects
+	// Go
 	try {
 		if (await Bun.file(`${cwd}/go.mod`).exists()) {
 			gates.lint = "golangci-lint run";
 			gates.test = "go test ./...";
 		}
-	} catch {
-		// ignore
-	}
+	} catch { /* */ }
+
+	// Rust
+	try {
+		if (await Bun.file(`${cwd}/Cargo.toml`).exists()) {
+			gates.lint = "cargo clippy -- -D warnings";
+			gates.format = "cargo fmt --check";
+			gates.test = "cargo test";
+		}
+	} catch { /* */ }
 
 	return gates;
 }

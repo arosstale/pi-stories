@@ -135,9 +135,9 @@ async function executeStep(
 	});
 
 	if (step.kind === "D") {
-		// Deterministic step — run gate commands
+		// Deterministic step — run gate commands or validate previous step
 		try {
-			const output = await runGate(step, opts.cwd);
+			const output = await runGate(step, opts.cwd, state);
 			result.status = "passed";
 			result.output = output;
 		} catch (err) {

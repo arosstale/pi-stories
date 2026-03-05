@@ -14,6 +14,8 @@ export interface PipelineStep {
 	tier?: CostTier;
 	/** For [D] steps: the command(s) to run */
 	commands?: string[];
+	/** For [D] validation steps: ID of a previous step to validate */
+	validate?: string;
 }
 
 export interface PipelineConfig {
